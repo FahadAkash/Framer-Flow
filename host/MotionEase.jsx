@@ -330,11 +330,10 @@ var MotionEase = (function () {
         return "?";
     }
 
-    // Set smooth (bezier) interpolation on every real keyframe in [aNum,bNum].
-    // Re-reads getKeys() so we target the ACTUAL (frame-snapped) key times, then
-    // probes constants 1/2/3 (Bezier / Auto Bezier / Continuous Bezier) with a
-    // read-back to find the one this Premiere accepts, and applies it to the rest.
-    // Returns a short diagnostic string.
+    // Set bezier interpolation on every real keyframe in [aNum,bNum]. Re-reads
+    // getKeys() so we target the ACTUAL (frame-snapped) key times. Premiere's
+    // kfInterpMode enum is Linear=0, Hold=1, Bezier=2, Time=3 — so BAKE_INTERP=2.
+    // If a read-back API exists we confirm it stuck (and fall back to 3 if not).
     function applyBezierToSegment(param, aNum, bNum) {
         if (typeof param.setInterpolationTypeAtKey !== "function") return "noSetFn";
         var keys;
@@ -349,22 +348,23 @@ var MotionEase = (function () {
         if (!inRange.length) return "0keys";
 
         var hasGet = (typeof param.getInterpolationTypeAtKey === "function");
-        var candidates = [1, 2, 3]; // Bezier, Auto Bezier, Continuous Bezier
-        var chosen = -1;
-        for (var c = 0; c < candidates.length; c++) {
-            try { param.setInterpolationTypeAtKey(inRange[0], candidates[c], true); } catch (e2) { continue; }
-            if (!hasGet) { chosen = candidates[c]; break; } // can't verify -> trust first
-            var got = null;
-            try { got = param.getInterpolationTypeAtKey(inRange[0]); } catch (e3) {}
-            if (got === candidates[c]) { chosen = candidates[c]; break; }
-        }
-        if (chosen < 0) return "reject(reads " + readInterp(param, inRange[0]) + ")";
+        var target = BAKE_INTERP; // 2 = Bezier
 
-        for (var r = 1; r < inRange.length; r++) {
-            var ui = (r === inRange.length - 1);
-            try { param.setInterpolationTypeAtKey(inRange[r], chosen, ui); } catch (e4) {}
+        if (hasGet) {
+            // confirm 2 sticks; if a version numbers it differently, try 3 then 4
+            var order = [2, 3, 4];
+            for (var c = 0; c < order.length; c++) {
+                try { param.setInterpolationTypeAtKey(inRange[0], order[c], true); } catch (e2) { continue; }
+                var got = null; try { got = param.getInterpolationTypeAtKey(inRange[0]); } catch (e3) {}
+                if (got === order[c]) { target = order[c]; break; }
+            }
         }
-        return "bezier" + chosen + "x" + inRange.length + (hasGet ? "" : "(noverify)");
+
+        for (var r = 0; r < inRange.length; r++) {
+            var ui = (r === inRange.length - 1);
+            try { param.setInterpolationTypeAtKey(inRange[r], target, ui); } catch (e4) {}
+        }
+        return "set" + target + "x" + inRange.length + (hasGet ? "" : "(noverify)");
     }
 
     // ---- undo snapshot / restore ----------------------------------------
