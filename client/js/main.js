@@ -343,7 +343,7 @@
         els.toast.textContent = msg;
         els.toast.className = "toast show " + (kind || "");
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { els.toast.className = "toast " + (kind || ""); }, 2600);
+        toastTimer = setTimeout(function () { els.toast.className = "toast " + (kind || ""); }, 6000);
     }
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, function (c) {

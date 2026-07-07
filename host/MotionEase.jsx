@@ -320,6 +320,16 @@ var MotionEase = (function () {
         return typeof rawA;
     }
 
+    // Read back a keyframe's interpolation type (for diagnostics), or "?".
+    function readInterp(param, rawKey) {
+        try {
+            if (typeof param.getInterpolationTypeAtKey === "function") {
+                return param.getInterpolationTypeAtKey(rawKey);
+            }
+        } catch (e) {}
+        return "?";
+    }
+
     // ---- undo snapshot / restore ----------------------------------------
 
     // Capture a param's full keyframe state (times, values, interpolation) so it
@@ -427,10 +437,17 @@ var MotionEase = (function () {
             try { param.setValueAtKey(time, value, NO_UI); setKeySmooth(param, time); count++; } catch (eSet) {}
         }
 
-        // Endpoints: keep their positions, set them to the smooth type too, and
-        // do the single UI refresh here (re-asserts values in case they shifted).
-        try { param.setValueAtKey(aRaw, vStart, NO_UI); param.setInterpolationTypeAtKey(aRaw, BAKE_INTERP, NO_UI); } catch (e4) {}
-        try { param.setValueAtKey(bRaw, vEnd, DO_UI); param.setInterpolationTypeAtKey(bRaw, BAKE_INTERP, NO_UI); } catch (e5) {}
+        // Endpoints: keep their positions, set them to the smooth type too.
+        // Interp change uses DO_UI here — some versions only commit an
+        // interpolation change when the UI is asked to update.
+        try { param.setValueAtKey(aRaw, vStart, NO_UI); param.setInterpolationTypeAtKey(aRaw, BAKE_INTERP, DO_UI); } catch (e4) {}
+        try { param.setValueAtKey(bRaw, vEnd, NO_UI); param.setInterpolationTypeAtKey(bRaw, BAKE_INTERP, DO_UI); } catch (e5) {}
+
+        // diagnostic: did the interpolation actually take?
+        var hasSetter = (typeof param.setInterpolationTypeAtKey === "function");
+        var hasGetter = (typeof param.getInterpolationTypeAtKey === "function");
+        report.probe = "set" + BAKE_INTERP + "->" + readInterp(param, aRaw) +
+            (hasSetter ? "" : " noSetFn") + (hasGetter ? "" : " noGetFn");
 
         report.applied = true; // endpoints preserved regardless
         report.reason = count + " interp keys [" + fmt + "]" +
@@ -579,6 +596,7 @@ var MotionEase = (function () {
             };
 
             var diag = "";
+            var probe = "";
             var snapshotSet = [];   // undo entry for this Apply
             for (var i = 0; i < items.length; i++) {
                 var props = collectProps(items[i], wanted, anyKeyed);
@@ -589,6 +607,7 @@ var MotionEase = (function () {
                         ? bakeParam(props[p].param, curve, seq, items[i])
                         : easeParamNative(props[p].param, easeOpts, seq, items[i]);
                     if (!diag && rep.fmt) diag = rep.fmt;
+                    if (!probe && rep.probe) probe = rep.probe;
                     result.details.push(props[p].comp + " › " + props[p].name + ": " + rep.reason);
                     if (rep.applied) applied++; else skipped++;
                 }
@@ -606,7 +625,8 @@ var MotionEase = (function () {
                 result.ok = true;
                 result.message = "Eased " + applied + " propert" + (applied > 1 ? "ies" : "y") +
                     (skipped ? " (" + skipped + " skipped)" : "") +
-                    (diag ? " · keys:" + diag : "");
+                    (diag ? " · keys:" + diag : "") +
+                    (probe ? " · " + probe : "");
             } else {
                 result.message = "No easable properties. Set a start and end keyframe first.";
             }
