@@ -49,15 +49,29 @@ html, body {
 #app { padding: 12px 14px 76px; max-width: 720px; margin: 0 auto; }
 
 /* Title bar */
-.titlebar { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 12px; }
-.title-wrap { display: flex; flex-direction: column; gap: 1px; }
-.title { font-weight: 600; font-size: 14px; letter-spacing: .2px; }
-.byline {
-    font-size: 10px; color: var(--muted); letter-spacing: .3px;
-    background: linear-gradient(90deg, var(--handle-a), var(--accent));
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-    font-weight: 600;
+.hero {
+    position: relative; text-align: center; padding: 14px 10px 16px; margin-bottom: 12px;
+    border: 1px solid var(--stroke); border-radius: 14px;
+    background:
+        radial-gradient(120% 140% at 50% -20%, rgba(47,107,255,0.16), transparent 60%),
+        radial-gradient(90% 120% at 100% 120%, rgba(192,132,252,0.12), transparent 60%),
+        linear-gradient(180deg, #161c26 0%, #11161e 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 26px rgba(0,0,0,0.28);
 }
+.hero-title {
+    font-size: 27px; font-weight: 800; letter-spacing: .4px; line-height: 1.1;
+    background: linear-gradient(92deg, #7db0ff 0%, #c084fc 55%, #f59e0b 120%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hero-sub { margin-top: 4px; font-size: 11.5px; color: var(--muted); letter-spacing: .2px; }
+.hero-meta { margin-top: 7px; font-size: 11px; color: var(--muted-2); letter-spacing: .3px; }
+.hero-meta b { color: var(--text); font-weight: 700; }
+.hero-meta .ver {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid rgba(47,107,255,0.35);
+}
+.hero .status { position: absolute; top: 10px; right: 12px; }
 .credit {
     text-align: center; font-size: 10px; color: var(--muted-2); letter-spacing: .4px;
     margin: 4px 0 2px;

@@ -122,9 +122,12 @@
             var el = document.createElement("div");
             el.className = "preset";
             el.dataset.cp = preset.cp.join(",");
+            el.title = preset.name + " — cubic-bezier(" +
+                preset.cp.map(function (n) { return (+n).toFixed(2); }).join(", ") + ")" +
+                (preset.user ? " (your preset)" : "") + "\nClick to load";
             el.innerHTML =
                 '<canvas></canvas><span>' + escapeHtml(preset.name) + "</span>" +
-                (preset.user ? '<span class="del" title="Delete">×</span>' : "");
+                (preset.user ? '<span class="del" title="Delete this preset">×</span>' : "");
             els.presetScroll.appendChild(el);
             drawThumb(el.querySelector("canvas"), preset.cp);
             el.addEventListener("click", function (e) {

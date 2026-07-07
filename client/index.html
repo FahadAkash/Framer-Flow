@@ -9,30 +9,29 @@
 <body>
     <div id="app">
         <!-- Title bar -->
-        <header class="titlebar">
-            <div class="title-wrap">
-                <span class="title">MotionEase Graph Editor</span>
-                <span class="byline">by Fahad Akash</span>
-            </div>
-            <span class="status" id="hostStatus"><span class="dot"></span> Connecting…</span>
+        <header class="hero">
+            <span class="status" id="hostStatus" title="Connection to Premiere Pro"><span class="dot"></span> Connecting…</span>
+            <h1 class="hero-title" title="MotionEase — an After Effects–style value & speed graph editor for Premiere Pro">MotionEase</h1>
+            <p class="hero-sub">After Effects–style graph editor for Premiere Pro</p>
+            <p class="hero-meta">made by <b title="Author">Fahad Akash</b> <span class="ver" title="Version 1.0">v1.0</span></p>
         </header>
 
         <!-- Properties -->
         <section class="block">
             <div class="row spread">
-                <h2>Apply to these properties</h2>
-                <label class="check inline">
+                <h2 title="Pick which of the clip's properties the ease is applied to when you press Apply">Apply to these properties</h2>
+                <label class="check inline" title="Toggle all four properties on or off">
                     <input type="checkbox" id="propAll" checked />
                     <span>All</span>
                 </label>
             </div>
             <div class="prop-grid" id="propGrid">
-                <label class="prop-chip"><input type="checkbox" data-prop="position" checked /><span>Position</span><i class="kf-dot" data-dot="position" title="keyframe status"></i></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="scale" checked /><span>Scale</span><i class="kf-dot" data-dot="scale"></i></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="rotation" checked /><span>Rotation</span><i class="kf-dot" data-dot="rotation"></i></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="opacity" checked /><span>Opacity</span><i class="kf-dot" data-dot="opacity"></i></label>
+                <label class="prop-chip" title="Apply the ease to Motion → Position (and any Transform-effect Position)"><input type="checkbox" data-prop="position" checked /><span>Position</span><i class="kf-dot" data-dot="position" title="Green = has keyframes · Dim = no keyframes yet · Hollow = not on this clip"></i></label>
+                <label class="prop-chip" title="Apply the ease to Scale"><input type="checkbox" data-prop="scale" checked /><span>Scale</span><i class="kf-dot" data-dot="scale" title="Green = has keyframes · Dim = no keyframes yet · Hollow = not on this clip"></i></label>
+                <label class="prop-chip" title="Apply the ease to Rotation"><input type="checkbox" data-prop="rotation" checked /><span>Rotation</span><i class="kf-dot" data-dot="rotation" title="Green = has keyframes · Dim = no keyframes yet · Hollow = not on this clip"></i></label>
+                <label class="prop-chip" title="Apply the ease to Opacity"><input type="checkbox" data-prop="opacity" checked /><span>Opacity</span><i class="kf-dot" data-dot="opacity" title="Green = has keyframes · Dim = no keyframes yet · Hollow = not on this clip"></i></label>
             </div>
-            <label class="check inline anykeyed"><input type="checkbox" id="anyKeyed" /><span>Also ease keyframed effect properties <em>(Transform, 3rd-party)</em></span></label>
+            <label class="check inline anykeyed" title="Also ease ANY parameter that has 2+ keyframes — covers the Transform effect and third-party plugin properties with custom names"><input type="checkbox" id="anyKeyed" /><span>Also ease keyframed effect properties <em>(Transform, 3rd-party)</em></span></label>
             <p class="hint" id="selectionHint">Select a clip with 2+ keyframes, then Apply.</p>
             <p class="hint effects-line" id="effectsLine"></p>
         </section>
@@ -47,35 +46,35 @@
                 <span class="hint small">Drag the handles. Snaps at 0 and 1, hold Shift for free.</span>
             </div>
 
-            <div class="graph-wrap">
+            <div class="graph-wrap" title="Drag the two colored handles to shape the ease. Hold Shift for free movement past 0–1 (overshoot / anticipation).">
                 <canvas id="graph" width="560" height="300"></canvas>
             </div>
 
-            <div class="readout" id="readout">cubic-bezier(0.42, 0.00, 0.58, 1.00)</div>
+            <div class="readout" id="readout" title="The ease as a CSS-style cubic-bezier — the four handle coordinates">cubic-bezier(0.42, 0.00, 0.58, 1.00)</div>
         </section>
 
         <!-- Live preview -->
         <section class="block">
-            <div class="section-cap">LIVE PREVIEW</div>
+            <div class="section-cap" title="A live loop of your current ease applied to each property type">LIVE PREVIEW</div>
             <div class="preview-row">
-                <div class="preview-cell" data-preview="position"><div class="stage"><div class="dot-box" id="pvPosition"></div></div><span>Position</span></div>
-                <div class="preview-cell" data-preview="scale"><div class="stage"><div class="dot-box" id="pvScale"></div></div><span>Scale</span></div>
-                <div class="preview-cell" data-preview="rotation"><div class="stage"><div class="dot-box" id="pvRotation"></div></div><span>Rotation</span></div>
-                <div class="preview-cell" data-preview="opacity"><div class="stage"><div class="dot-box" id="pvOpacity"></div></div><span>Opacity</span></div>
-                <div class="preview-cell more" id="replayBtn"><div class="stage"><div class="more-badge">▶ replay</div></div><span>Any property</span></div>
+                <div class="preview-cell" data-preview="position" title="Your ease previewed as movement"><div class="stage"><div class="dot-box" id="pvPosition"></div></div><span>Position</span></div>
+                <div class="preview-cell" data-preview="scale" title="Your ease previewed as scaling"><div class="stage"><div class="dot-box" id="pvScale"></div></div><span>Scale</span></div>
+                <div class="preview-cell" data-preview="rotation" title="Your ease previewed as rotation"><div class="stage"><div class="dot-box" id="pvRotation"></div></div><span>Rotation</span></div>
+                <div class="preview-cell" data-preview="opacity" title="Your ease previewed as a fade"><div class="stage"><div class="dot-box" id="pvOpacity"></div></div><span>Opacity</span></div>
+                <div class="preview-cell more" id="replayBtn" title="Replay the preview loop"><div class="stage"><div class="more-badge">▶ replay</div></div><span>Any property</span></div>
             </div>
         </section>
 
         <!-- Presets -->
         <section class="block">
             <div class="row spread">
-                <div class="section-cap">PRESETS</div>
-                <button class="ghost-btn" id="savePresetBtn">+ Save current</button>
+                <div class="section-cap" title="Click a preset to load its curve. Scroll for more.">PRESETS</div>
+                <button class="ghost-btn" id="savePresetBtn" title="Save the current curve as a reusable preset">+ Save current</button>
             </div>
             <div class="preset-scroll" id="presetScroll"></div>
         </section>
 
-        <div class="credit">MotionEase — crafted by <b>Fahad Akash</b></div>
+        <div class="credit">MotionEase v1.0 — crafted by <b>Fahad Akash</b></div>
 
         <!-- Apply bar -->
         <footer class="applybar">
@@ -83,16 +82,16 @@
                 <label class="radio" title="Traces your exact curve with a smooth set of keyframes (~16). Best fidelity. Recommended."><input type="radio" name="applyMode" value="smooth" data-density="16" checked /><span>Smooth</span></label>
                 <label class="radio" title="Traces your curve with only a few keyframes (~6). Cleaner &amp; lighter, still accurate — and it always applies."><input type="radio" name="applyMode" value="minimal" data-density="6" /><span>Minimal</span></label>
                 <span class="dens" id="densWrap">
-                    <button class="step" id="densMinus" type="button" tabindex="-1" aria-label="Fewer keyframes">&minus;</button>
-                    <input id="densInput" type="number" min="3" max="120" value="16" />
-                    <button class="step" id="densPlus" type="button" tabindex="-1" aria-label="More keyframes">+</button>
-                    <span class="dens-label">kf</span>
+                    <button class="step" id="densMinus" type="button" tabindex="-1" aria-label="Fewer keyframes" title="Fewer keyframes">&minus;</button>
+                    <input id="densInput" type="number" min="3" max="120" value="16" title="How many keyframes to bake — fewer is cleaner, more is smoother" />
+                    <button class="step" id="densPlus" type="button" tabindex="-1" aria-label="More keyframes" title="More keyframes">+</button>
+                    <span class="dens-label" title="keyframes">kf</span>
                 </span>
                 <span class="mode-caption" id="modeCaption"></span>
             </div>
             <div class="apply-actions">
-                <button class="undo-btn" id="undoBtn" title="Restore properties to before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
-                <button class="apply-btn" id="applyBtn">Apply to selection</button>
+                <button class="undo-btn" id="undoBtn" title="Restore properties to how they were before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
+                <button class="apply-btn" id="applyBtn" title="Bake the ease onto the selected clip's ticked properties (playhead picks the keyframe segment)">Apply to selection</button>
             </div>
         </footer>
 
