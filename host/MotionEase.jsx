@@ -26,9 +26,15 @@ var MotionEase = (function () {
     var undoStack = [];
     var UNDO_LIMIT = 25;
 
-    // Premiere keyframe interpolation constants (best-effort; baking is dense
-    // so the exact type barely affects the result).
-    var KF = { LINEAR: 0, BEZIER: 2, HOLD: 1, TIME: 3 };
+    // Premiere keyframe interpolation constants (setInterpolationTypeAtKey).
+    // Types shown in the keyframe right-click menu: Linear, Bezier, Auto Bezier,
+    // Continuous Bezier, Hold.
+    var KF = { LINEAR: 0, HOLD: 1, BEZIER: 2, TIME: 3 };
+
+    // Interpolation applied to every baked keyframe so the motion is smooth and
+    // consistent (instead of faceted Linear). If motion ever FREEZES between
+    // keys, this landed on Hold on your version — change to KF.LINEAR.
+    var BAKE_INTERP = KF.BEZIER;
 
     // The interpolation type used for the "Ease my keyframes" (native) mode.
     // Premiere's enum has varied across versions; if native easing ever FREEZES
@@ -277,8 +283,10 @@ var MotionEase = (function () {
         return found;
     }
 
-    function setKeyLinear(param, time) {
-        try { param.setInterpolationTypeAtKey(time, KF.LINEAR, false); } catch (e) {}
+    // Set a keyframe's interpolation to the smooth bake type (auto-applied to
+    // every baked keyframe so each one eases cleanly).
+    function setKeySmooth(param, time) {
+        try { param.setInterpolationTypeAtKey(time, BAKE_INTERP, false); } catch (e) {}
     }
 
     // Build an in-between keyframe TIME at fraction `frac` of the way from rawA to
@@ -416,13 +424,13 @@ var MotionEase = (function () {
             if (time === null) continue;
             var value = lerp(vStart, vEnd, pt.v);
             try { param.addKey(time); } catch (eAdd) {}
-            try { param.setValueAtKey(time, value, NO_UI); setKeyLinear(param, time); count++; } catch (eSet) {}
+            try { param.setValueAtKey(time, value, NO_UI); setKeySmooth(param, time); count++; } catch (eSet) {}
         }
 
-        // Endpoints: keep their positions, set them linear, and do the single UI
-        // refresh here (also re-asserts their values in case anything shifted).
-        try { param.setValueAtKey(aRaw, vStart, NO_UI); param.setInterpolationTypeAtKey(aRaw, KF.LINEAR, NO_UI); } catch (e4) {}
-        try { param.setValueAtKey(bRaw, vEnd, DO_UI); param.setInterpolationTypeAtKey(bRaw, KF.LINEAR, NO_UI); } catch (e5) {}
+        // Endpoints: keep their positions, set them to the smooth type too, and
+        // do the single UI refresh here (re-asserts values in case they shifted).
+        try { param.setValueAtKey(aRaw, vStart, NO_UI); param.setInterpolationTypeAtKey(aRaw, BAKE_INTERP, NO_UI); } catch (e4) {}
+        try { param.setValueAtKey(bRaw, vEnd, DO_UI); param.setInterpolationTypeAtKey(bRaw, BAKE_INTERP, NO_UI); } catch (e5) {}
 
         report.applied = true; // endpoints preserved regardless
         report.reason = count + " interp keys [" + fmt + "]" +
