@@ -145,11 +145,25 @@ var MotionEase = (function () {
         } catch (e) { return null; }
     }
 
+    // Convert a Time-ish value (Time object or number) to seconds, or null.
+    function timeToSeconds(t) {
+        if (t === null || t === undefined) return null;
+        if (typeof t === "number") return t;
+        if (t.seconds !== undefined && t.seconds !== null) return t.seconds;
+        if (t.ticks !== undefined && t.ticks !== null) {
+            var v = parseFloat(t.ticks);
+            if (!isNaN(v)) return v / TICKS_PER_SECOND;
+        }
+        return null;
+    }
+
     // From a property's raw keyframe list, pick the ONE segment (adjacent pair)
-    // that the playhead sits inside. This is how we scope an Apply to just the
-    // two keyframes you're working on instead of the whole property. Returns
-    // sorted { raw, n } entries plus the chosen a/b endpoints.
-    function pickSegment(keys, seq) {
+    // the playhead sits inside — this scopes an Apply to just the two keyframes
+    // you're working on. The playhead comes from the sequence (sequence time) but
+    // keyframe times may be clip-relative, so we try several reference frames
+    // (sequence, clip-start-relative, clip-start+in-point) and use whichever puts
+    // the playhead inside the keyframe range.
+    function pickSegment(keys, seq, item) {
         var arr = [];
         for (var i = 0; i < keys.length; i++) {
             var n = rawNum(keys[i]);
@@ -161,22 +175,36 @@ var MotionEase = (function () {
         var nums = [];
         for (var j = 0; j < arr.length; j++) nums.push(arr[j].n);
         var toSec = toSecondsFn(nums);
-        var P = playheadSeconds(seq);
+        var loSec = toSec(arr[0].n), hiSec = toSec(arr[arr.length - 1].n);
 
-        var idx = -1;
+        var P = playheadSeconds(seq);
+        var Peff = null;
         if (P !== null) {
-            for (var s = 0; s < arr.length - 1; s++) {
-                var a = toSec(arr[s].n), b = toSec(arr[s + 1].n);
-                if (P >= a - 1e-4 && P <= b + 1e-4) { idx = s; break; }
+            // candidate playhead positions in the keyframes' own reference frame
+            var startSec = item ? timeToSeconds(item.start) : null;
+            var inSec = item ? timeToSeconds(item.inPoint) : null;
+            var candidates = [P];
+            if (startSec !== null) candidates.push(P - startSec);
+            if (startSec !== null && inSec !== null) candidates.push(P - startSec + inSec);
+            for (var ci = 0; ci < candidates.length; ci++) {
+                var cand = candidates[ci];
+                if (cand >= loSec - 1e-3 && cand <= hiSec + 1e-3) { Peff = cand; break; }
             }
-            if (idx < 0) { // playhead outside all segments -> nearest end segment
-                idx = (P < toSec(arr[0].n)) ? 0 : arr.length - 2;
-            }
-        } else {
-            idx = 0; // no playhead info: fall back to the first segment
+            if (Peff === null) Peff = P; // nothing landed in range; use raw (falls back below)
         }
 
-        return { list: arr, a: arr[idx], b: arr[idx + 1], multi: arr.length > 2 };
+        var idx = -1;
+        if (Peff !== null) {
+            for (var s = 0; s < arr.length - 1; s++) {
+                var a = toSec(arr[s].n), b = toSec(arr[s + 1].n);
+                if (Peff >= a - 1e-3 && Peff <= b + 1e-3) { idx = s; break; }
+            }
+            if (idx < 0) idx = (Peff < loSec) ? 0 : arr.length - 2; // outside -> nearest end
+        } else {
+            idx = 0; // no playhead info at all
+        }
+
+        return { list: arr, a: arr[idx], b: arr[idx + 1], multi: arr.length > 2, idx: idx };
     }
 
     // Find matching ComponentParams on a TrackItem for the requested props.
@@ -281,7 +309,7 @@ var MotionEase = (function () {
     // SAFE: never removes the two endpoint keyframes — it only removes previously
     // baked interior keys and adds new interior keys between your endpoints. Worst
     // case (a write fails) your original keyframes are still intact.
-    function bakeParam(param, curve, seq) {
+    function bakeParam(param, curve, seq, item) {
         var report = { applied: false, reason: "" };
 
         var timeVarying = false;
@@ -292,7 +320,7 @@ var MotionEase = (function () {
         try { keys = param.getKeys(); } catch (e) { keys = null; }
         if (!keys || keys.length < 2) { report.reason = "needs 2+ keyframes"; return report; }
 
-        var seg = pickSegment(keys, seq);
+        var seg = pickSegment(keys, seq, item);
         if (!seg) { report.reason = "no segment"; return report; }
 
         var aRaw = seg.a.raw, bRaw = seg.b.raw;
@@ -334,7 +362,8 @@ var MotionEase = (function () {
         try { param.setValueAtKey(bRaw, vEnd, DO_UI); param.setInterpolationTypeAtKey(bRaw, KF.LINEAR, NO_UI); } catch (e5) {}
 
         report.applied = true; // endpoints preserved regardless
-        report.reason = count + " interp keys [" + fmt + "]" + (seg.multi ? " (segment @ playhead)" : "");
+        report.reason = count + " interp keys [" + fmt + "]" +
+            (seg.multi ? " (seg " + (seg.idx + 1) + "/" + (seg.list.length - 1) + " @ playhead)" : "");
         report.keys = count;
         report.fmt = fmt;
         return report;
@@ -350,7 +379,7 @@ var MotionEase = (function () {
     //   start -> Ease In      (only the first keyframe bezier; end stays snappy)
     //   end   -> Ease Out     (only the last keyframe bezier; start stays snappy)
     //   none  -> Linear
-    function easeParamNative(param, opts, seq) {
+    function easeParamNative(param, opts, seq, item) {
         var report = { applied: false, reason: "" };
         var easeStart = opts && opts.easeStart;
         var easeEnd = opts && opts.easeEnd;
@@ -363,7 +392,7 @@ var MotionEase = (function () {
         try { keys = param.getKeys(); } catch (e) { keys = null; }
         if (!keys || keys.length < 2) { report.reason = "needs 2+ keyframes"; return report; }
 
-        var seg = pickSegment(keys, seq);
+        var seg = pickSegment(keys, seq, item);
         if (!seg) { report.reason = "no segment"; return report; }
 
         // Set interpolation on just this segment's two keyframes. Pass the RAW
@@ -483,8 +512,8 @@ var MotionEase = (function () {
                 var props = collectProps(items[i], wanted, anyKeyed);
                 for (var p = 0; p < props.length; p++) {
                     var rep = (method === "bake")
-                        ? bakeParam(props[p].param, curve, seq)
-                        : easeParamNative(props[p].param, easeOpts, seq);
+                        ? bakeParam(props[p].param, curve, seq, items[i])
+                        : easeParamNative(props[p].param, easeOpts, seq, items[i]);
                     if (!diag && rep.fmt) diag = rep.fmt;
                     result.details.push(props[p].comp + " › " + props[p].name + ": " + rep.reason);
                     if (rep.applied) applied++; else skipped++;
