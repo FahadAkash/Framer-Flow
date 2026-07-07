@@ -17,6 +17,7 @@
         presetScroll: document.getElementById("presetScroll"),
         savePresetBtn: document.getElementById("savePresetBtn"),
         applyBtn: document.getElementById("applyBtn"),
+        undoBtn: document.getElementById("undoBtn"),
         densWrap: document.getElementById("densWrap"),
         densInput: document.getElementById("densInput"),
         densMinus: document.getElementById("densMinus"),
@@ -250,7 +251,30 @@
         } else {
             toast(r.message || "Nothing to apply", "err");
         }
+        if (typeof r.canUndo === "number") setUndoEnabled(r.canUndo > 0);
     }
+
+    // ---- undo / restore -----------------------------------------------------
+    function setUndoEnabled(on) { els.undoBtn.disabled = !on; }
+
+    function restoreLast() {
+        if (!hostReady || els.undoBtn.disabled) return;
+        els.undoBtn.disabled = true;
+        cs.evalScript("MotionEase.restoreLast()", function (res) {
+            var r; try { r = JSON.parse(res); } catch (e) { r = null; }
+            if (!r) { toast("Restore error", "err"); return; }
+            toast(r.message || (r.ok ? "Restored" : "Nothing to undo"), r.ok ? "ok" : "err");
+            setUndoEnabled(r.remaining > 0);
+        });
+    }
+    els.undoBtn.addEventListener("click", restoreLast);
+    // Ctrl/Cmd+Z inside the panel = restore last Apply
+    document.addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+            e.preventDefault();
+            restoreLast();
+        }
+    });
 
     // ---- selection polling --------------------------------------------------
     function setDot(prop, state) {
@@ -310,7 +334,14 @@
             var ok = String(res).indexOf("MotionEase") >= 0;
             els.status.className = ok ? "status ok" : "status err";
             els.status.innerHTML = '<span class="dot"></span> ' + (ok ? "Connected" : "Host not responding");
-            if (ok) { pollSelection(); setInterval(pollSelection, 1500); }
+            if (ok) {
+                pollSelection();
+                setInterval(pollSelection, 1500);
+                // sync undo button with any history the host still holds
+                cs.evalScript("MotionEase.undoCount()", function (c) {
+                    setUndoEnabled(parseInt(c, 10) > 0);
+                });
+            }
         });
     }
 

@@ -38,8 +38,8 @@
         <section class="block">
             <div class="row spread">
                 <div class="seg" role="tablist">
-                    <button class="seg-btn active" id="tabValue" data-mode="value">Value</button>
-                    <button class="seg-btn" id="tabSpeed" data-mode="speed">Speed</button>
+                    <button class="seg-btn active" id="tabValue" data-mode="value" title="Value graph: the property's value over time — the ease shape itself.">Value</button>
+                    <button class="seg-btn" id="tabSpeed" data-mode="speed" title="Speed graph: the same ease seen as velocity — how fast the value moves at each moment (accelerate / coast / decelerate).">Speed</button>
                 </div>
                 <span class="hint small">Drag the handles. Snaps at 0 and 1, hold Shift for free.</span>
             </div>
@@ -85,7 +85,10 @@
                 </span>
                 <span class="mode-caption" id="modeCaption"></span>
             </div>
-            <button class="apply-btn" id="applyBtn">Apply to selection</button>
+            <div class="apply-actions">
+                <button class="undo-btn" id="undoBtn" title="Restore properties to before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
+                <button class="apply-btn" id="applyBtn">Apply to selection</button>
+            </div>
         </footer>
 
         <div class="toast" id="toast"></div>

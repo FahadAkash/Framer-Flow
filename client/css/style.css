@@ -204,6 +204,15 @@ h2 { font-size: 13px; font-weight: 600; }
     padding: 11px 22px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font);
     box-shadow: 0 6px 18px rgba(47,107,255,.35);
 }
+.apply-actions { display: flex; align-items: center; gap: 8px; }
+.undo-btn {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-2);
+    border-radius: 9px; padding: 10px 14px; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: var(--font); transition: border-color .15s, color .15s;
+}
+.undo-btn:hover:not(:disabled) { border-color: var(--accent); color: #fff; }
+.undo-btn:active:not(:disabled) { transform: translateY(1px); }
+.undo-btn:disabled { opacity: .4; cursor: not-allowed; }
 .apply-btn:hover { filter: brightness(1.08); }
 .apply-btn:active { transform: translateY(1px); }
 .apply-btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }

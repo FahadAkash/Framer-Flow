@@ -19,6 +19,13 @@ var MotionEase = (function () {
 
     var VERSION = "1.0.0";
 
+    // Undo history: each Apply pushes a set of per-property snapshots taken
+    // BEFORE it modified anything. restoreLast() pops and rewrites them. The
+    // ExtendScript engine is persistent across evalScript calls, so live param
+    // references and this stack survive between panel calls.
+    var undoStack = [];
+    var UNDO_LIMIT = 25;
+
     // Premiere keyframe interpolation constants (best-effort; baking is dense
     // so the exact type barely affects the result).
     var KF = { LINEAR: 0, BEZIER: 2, HOLD: 1, TIME: 3 };
@@ -305,6 +312,62 @@ var MotionEase = (function () {
         return typeof rawA;
     }
 
+    // ---- undo snapshot / restore ----------------------------------------
+
+    // Capture a param's full keyframe state (times, values, interpolation) so it
+    // can be rewritten verbatim later. Keeps a live reference to the param.
+    function snapshotParam(param, label) {
+        var snap = { param: param, label: label || "", timeVarying: false, keys: [] };
+        try { snap.timeVarying = param.isTimeVarying(); } catch (e) {}
+        if (snap.timeVarying) {
+            try {
+                var keys = param.getKeys();
+                for (var i = 0; i < keys.length; i++) {
+                    var raw = keys[i];
+                    var val = null, interp = null;
+                    try { val = param.getValueAtKey(raw); } catch (e2) {}
+                    try {
+                        if (typeof param.getInterpolationTypeAtKey === "function") {
+                            interp = param.getInterpolationTypeAtKey(raw);
+                        }
+                    } catch (e3) { interp = null; }
+                    snap.keys.push({ raw: raw, value: val, interp: interp });
+                }
+            } catch (e4) {}
+        }
+        return snap;
+    }
+
+    // Rewrite a param to exactly the snapshot state: remove every current key,
+    // then re-create the snapshot's keys/values/interpolation.
+    function restoreParam(snap) {
+        var param = snap.param;
+        // remove all current keys (back to front)
+        try {
+            var cur = param.getKeys();
+            for (var i = cur.length - 1; i >= 0; i--) {
+                try { param.removeKey(cur[i]); } catch (e) {}
+            }
+        } catch (e5) {}
+
+        if (!snap.timeVarying) {
+            try { param.setTimeVarying(false); } catch (e6) {}
+            return true;
+        }
+
+        var last = snap.keys.length - 1;
+        for (var j = 0; j < snap.keys.length; j++) {
+            var k = snap.keys[j];
+            var ui = (j === last) ? DO_UI : NO_UI;
+            try { param.addKey(k.raw); } catch (eAdd) {}
+            try { param.setValueAtKey(k.raw, k.value, ui); } catch (eSet) {}
+            if (k.interp !== null && k.interp !== undefined) {
+                try { param.setInterpolationTypeAtKey(k.raw, k.interp, NO_UI); } catch (eInt) {}
+            }
+        }
+        return true;
+    }
+
     // Bake the curve onto ONE segment (the keyframe pair at the playhead).
     // SAFE: never removes the two endpoint keyframes — it only removes previously
     // baked interior keys and adds new interior keys between your endpoints. Worst
@@ -508,9 +571,12 @@ var MotionEase = (function () {
             };
 
             var diag = "";
+            var snapshotSet = [];   // undo entry for this Apply
             for (var i = 0; i < items.length; i++) {
                 var props = collectProps(items[i], wanted, anyKeyed);
                 for (var p = 0; p < props.length; p++) {
+                    // snapshot BEFORE modifying so Restore can put it back
+                    snapshotSet.push(snapshotParam(props[p].param, props[p].comp + " › " + props[p].name));
                     var rep = (method === "bake")
                         ? bakeParam(props[p].param, curve, seq, items[i])
                         : easeParamNative(props[p].param, easeOpts, seq, items[i]);
@@ -520,8 +586,14 @@ var MotionEase = (function () {
                 }
             }
 
+            if (applied > 0 && snapshotSet.length) {
+                undoStack.push(snapshotSet);
+                if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+            }
+
             result.applied = applied;
             result.diag = diag;
+            result.canUndo = undoStack.length;
             if (applied > 0) {
                 result.ok = true;
                 result.message = "Eased " + applied + " propert" + (applied > 1 ? "ies" : "y") +
@@ -536,11 +608,36 @@ var MotionEase = (function () {
         return JSON.stringify(result);
     }
 
+    // Undo the most recent Apply: pop the last snapshot set and rewrite each
+    // property to its pre-Apply keyframe state.
+    function restoreLast() {
+        var result = { ok: false, message: "", remaining: undoStack.length };
+        if (!undoStack.length) {
+            result.message = "Nothing to undo.";
+            return JSON.stringify(result);
+        }
+        var set = undoStack.pop();
+        var restored = 0;
+        for (var i = 0; i < set.length; i++) {
+            try { if (restoreParam(set[i])) restored++; } catch (e) {}
+        }
+        result.ok = restored > 0;
+        result.remaining = undoStack.length;
+        result.message = restored > 0
+            ? ("Restored " + restored + " propert" + (restored > 1 ? "ies" : "y"))
+            : "Restore failed.";
+        return JSON.stringify(result);
+    }
+
+    function undoCount() { return String(undoStack.length); }
+
     return {
         ping: ping,
         getSelectionInfo: getSelectionInfo,
         scanSelection: scanSelection,
-        apply: apply
+        apply: apply,
+        restoreLast: restoreLast,
+        undoCount: undoCount
     };
 })();
 
@@ -549,3 +646,4 @@ function ME_ping() { return MotionEase.ping(); }
 function ME_getSelectionInfo() { return MotionEase.getSelectionInfo(); }
 function ME_scanSelection() { return MotionEase.scanSelection(); }
 function ME_apply(p) { return MotionEase.apply(p); }
+function ME_restoreLast() { return MotionEase.restoreLast(); }
