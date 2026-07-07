@@ -330,6 +330,43 @@ var MotionEase = (function () {
         return "?";
     }
 
+    // Set smooth (bezier) interpolation on every real keyframe in [aNum,bNum].
+    // Re-reads getKeys() so we target the ACTUAL (frame-snapped) key times, then
+    // probes constants 1/2/3 (Bezier / Auto Bezier / Continuous Bezier) with a
+    // read-back to find the one this Premiere accepts, and applies it to the rest.
+    // Returns a short diagnostic string.
+    function applyBezierToSegment(param, aNum, bNum) {
+        if (typeof param.setInterpolationTypeAtKey !== "function") return "noSetFn";
+        var keys;
+        try { keys = param.getKeys(); } catch (e) { return "noKeys"; }
+        if (!keys) return "noKeys";
+
+        var inRange = [];
+        for (var i = 0; i < keys.length; i++) {
+            var n = rawNum(keys[i]);
+            if (n !== null && n >= aNum - 1e-6 && n <= bNum + 1e-6) inRange.push(keys[i]);
+        }
+        if (!inRange.length) return "0keys";
+
+        var hasGet = (typeof param.getInterpolationTypeAtKey === "function");
+        var candidates = [1, 2, 3]; // Bezier, Auto Bezier, Continuous Bezier
+        var chosen = -1;
+        for (var c = 0; c < candidates.length; c++) {
+            try { param.setInterpolationTypeAtKey(inRange[0], candidates[c], true); } catch (e2) { continue; }
+            if (!hasGet) { chosen = candidates[c]; break; } // can't verify -> trust first
+            var got = null;
+            try { got = param.getInterpolationTypeAtKey(inRange[0]); } catch (e3) {}
+            if (got === candidates[c]) { chosen = candidates[c]; break; }
+        }
+        if (chosen < 0) return "reject(reads " + readInterp(param, inRange[0]) + ")";
+
+        for (var r = 1; r < inRange.length; r++) {
+            var ui = (r === inRange.length - 1);
+            try { param.setInterpolationTypeAtKey(inRange[r], chosen, ui); } catch (e4) {}
+        }
+        return "bezier" + chosen + "x" + inRange.length + (hasGet ? "" : "(noverify)");
+    }
+
     // ---- undo snapshot / restore ----------------------------------------
 
     // Capture a param's full keyframe state (times, values, interpolation) so it
@@ -434,20 +471,16 @@ var MotionEase = (function () {
             if (time === null) continue;
             var value = lerp(vStart, vEnd, pt.v);
             try { param.addKey(time); } catch (eAdd) {}
-            try { param.setValueAtKey(time, value, NO_UI); setKeySmooth(param, time); count++; } catch (eSet) {}
+            try { param.setValueAtKey(time, value, NO_UI); count++; } catch (eSet) {}
         }
 
-        // Endpoints: keep their positions, set them to the smooth type too.
-        // Interp change uses DO_UI here — some versions only commit an
-        // interpolation change when the UI is asked to update.
-        try { param.setValueAtKey(aRaw, vStart, NO_UI); param.setInterpolationTypeAtKey(aRaw, BAKE_INTERP, DO_UI); } catch (e4) {}
-        try { param.setValueAtKey(bRaw, vEnd, NO_UI); param.setInterpolationTypeAtKey(bRaw, BAKE_INTERP, DO_UI); } catch (e5) {}
+        // re-assert endpoint values (they are never removed)
+        try { param.setValueAtKey(aRaw, vStart, NO_UI); } catch (e4) {}
+        try { param.setValueAtKey(bRaw, vEnd, DO_UI); } catch (e5) {}
 
-        // diagnostic: did the interpolation actually take?
-        var hasSetter = (typeof param.setInterpolationTypeAtKey === "function");
-        var hasGetter = (typeof param.getInterpolationTypeAtKey === "function");
-        report.probe = "set" + BAKE_INTERP + "->" + readInterp(param, aRaw) +
-            (hasSetter ? "" : " noSetFn") + (hasGetter ? "" : " noGetFn");
+        // Now set smooth bezier interpolation on the REAL key times (frame-snapped),
+        // auto-detecting the constant this Premiere accepts.
+        report.probe = applyBezierToSegment(param, aNum, bNum);
 
         report.applied = true; // endpoints preserved regardless
         report.reason = count + " interp keys [" + fmt + "]" +
