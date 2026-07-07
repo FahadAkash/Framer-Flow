@@ -85,7 +85,22 @@ h2 { font-size: 13px; font-weight: 600; }
 }
 .prop-chip:hover { border-color: #3a4658; }
 .prop-chip input { accent-color: var(--accent); }
-.prop-chip span { font-size: 12px; }
+.prop-chip span { font-size: 12px; flex: 1; }
+
+/* per-property keyframe status dot */
+.kf-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+    background: var(--muted-2); box-shadow: none; transition: background .2s, box-shadow .2s;
+}
+.kf-dot.keyed { background: var(--ok); box-shadow: 0 0 7px var(--ok); }      /* has 2+ keyframes */
+.kf-dot.none  { background: var(--muted-2); opacity: .6; }                   /* keyframeable, not animated */
+.kf-dot.absent { background: transparent; border: 1px solid var(--stroke-2); } /* not on this clip */
+
+.anykeyed { margin-top: 12px; }
+.anykeyed span { font-size: 12px; color: var(--text); }
+.anykeyed em { font-style: normal; color: var(--muted); font-size: 11px; }
+.effects-line { margin-top: 6px; color: var(--handle-a); font-size: 11px; }
+.effects-line:empty { display: none; }
 
 /* Segmented control */
 .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--stroke-2); border-radius: 8px; padding: 3px; }

@@ -24,12 +24,14 @@
                 </label>
             </div>
             <div class="prop-grid" id="propGrid">
-                <label class="prop-chip"><input type="checkbox" data-prop="position" checked /><span>Position</span></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="scale" checked /><span>Scale</span></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="rotation" checked /><span>Rotation</span></label>
-                <label class="prop-chip"><input type="checkbox" data-prop="opacity" checked /><span>Opacity</span></label>
+                <label class="prop-chip"><input type="checkbox" data-prop="position" checked /><span>Position</span><i class="kf-dot" data-dot="position" title="keyframe status"></i></label>
+                <label class="prop-chip"><input type="checkbox" data-prop="scale" checked /><span>Scale</span><i class="kf-dot" data-dot="scale"></i></label>
+                <label class="prop-chip"><input type="checkbox" data-prop="rotation" checked /><span>Rotation</span><i class="kf-dot" data-dot="rotation"></i></label>
+                <label class="prop-chip"><input type="checkbox" data-prop="opacity" checked /><span>Opacity</span><i class="kf-dot" data-dot="opacity"></i></label>
             </div>
+            <label class="check inline anykeyed"><input type="checkbox" id="anyKeyed" /><span>Also ease keyframed effect properties <em>(Transform, 3rd-party)</em></span></label>
             <p class="hint" id="selectionHint">Select a clip with 2+ keyframes, then Apply.</p>
+            <p class="hint effects-line" id="effectsLine"></p>
         </section>
 
         <!-- Editor -->

@@ -22,6 +22,8 @@
         densMinus: document.getElementById("densMinus"),
         densPlus: document.getElementById("densPlus"),
         easeType: document.getElementById("easeType"),
+        anyKeyed: document.getElementById("anyKeyed"),
+        effectsLine: document.getElementById("effectsLine"),
         replayBtn: document.getElementById("replayBtn"),
         toast: document.getElementById("toast")
     };
@@ -203,7 +205,7 @@
     // ---- apply --------------------------------------------------------------
     els.applyBtn.addEventListener("click", function () {
         var props = selectedProps();
-        if (!props.length) { toast("Pick at least one property", "err"); return; }
+        if (!props.length && !els.anyKeyed.checked) { toast("Pick a property, or tick keyframed effect props", "err"); return; }
         if (!hostReady) { toast("Not running inside Premiere Pro", "err"); return; }
 
         var method = applyMethod();
@@ -214,6 +216,7 @@
             mode: editor.mode,            // graph view: value | speed
             method: method,               // native | bake
             props: props,
+            anyKeyed: !!els.anyKeyed.checked,   // also ease keyframed effect params
             samples: density,
             easeStart: ease.easeStart,    // native mode: bezier the first keyframe
             easeEnd: ease.easeEnd,        // native mode: bezier the last keyframe
@@ -245,17 +248,47 @@
     }
 
     // ---- selection polling --------------------------------------------------
+    function setDot(prop, state) {
+        var dot = els.propGrid.querySelector('.kf-dot[data-dot="' + prop + '"]');
+        if (dot) dot.className = "kf-dot " + state;
+    }
+    function clearDots(state) {
+        ["position", "scale", "rotation", "opacity"].forEach(function (p) { setDot(p, state); });
+    }
+
     function pollSelection() {
         if (!hostReady) return;
-        cs.evalScript("MotionEase.getSelectionInfo()", function (res) {
+        cs.evalScript("MotionEase.scanSelection()", function (res) {
             var r; try { r = JSON.parse(res); } catch (e) { r = null; }
             if (!r) return;
-            if (r.clips === 0) {
+
+            if (!r.clips) {
                 els.selectionHint.textContent = "Select a clip with 2+ keyframes, then Apply.";
+                els.effectsLine.textContent = "";
+                clearDots("");
+                return;
+            }
+
+            els.selectionHint.textContent =
+                r.clips + " clip" + (r.clips > 1 ? "s" : "") + " selected" +
+                (r.sequence ? " · " + r.sequence : "");
+
+            // per-property keyframe dots: green=animated, dim=present, hollow=absent
+            var p = r.props || {};
+            ["position", "scale", "rotation", "opacity"].forEach(function (prop) {
+                var s = p[prop] || {};
+                setDot(prop, s.keyed ? "keyed" : (s.present ? "none" : "absent"));
+            });
+
+            // list effects/components that hold keyframes (Transform, 3rd-party)
+            var eff = r.effects || [];
+            if (eff.length) {
+                var parts = eff.map(function (e) {
+                    return e.name + " (" + e.params.map(function (x) { return x.name; }).join(", ") + ")";
+                });
+                els.effectsLine.textContent = "Keyframed: " + parts.join("  ·  ");
             } else {
-                els.selectionHint.textContent =
-                    r.clips + " clip" + (r.clips > 1 ? "s" : "") + " selected" +
-                    (r.sequence ? " · " + r.sequence : "");
+                els.effectsLine.textContent = "";
             }
         });
     }

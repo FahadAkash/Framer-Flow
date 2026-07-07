@@ -180,26 +180,62 @@ var MotionEase = (function () {
     }
 
     // Find matching ComponentParams on a TrackItem for the requested props.
-    function collectProps(item, wanted) {
-        var found = []; // { id, param }
+    // How many keyframes a param currently has (0 if not animated/keyframeable).
+    function paramKeyCount(param) {
+        try {
+            var tv = (typeof param.isTimeVarying === "function") ? param.isTimeVarying() : false;
+            if (!tv) return 0;
+            var k = param.getKeys();
+            return (k && k.length) ? k.length : 0;
+        } catch (e) { return 0; }
+    }
+
+    // Map a property display name to one of our target ids, or null.
+    function targetIdForName(name) {
+        if (!name) return null;
+        var lower = name.toLowerCase();
+        for (var id in TARGETS) {
+            if (!TARGETS.hasOwnProperty(id)) continue;
+            var aliases = TARGETS[id];
+            for (var a = 0; a < aliases.length; a++) {
+                if (lower === aliases[a].toLowerCase()) return id;
+            }
+        }
+        return null;
+    }
+
+    // Collect target params on an item.
+    //   wanted   = target ids to include by name (position/scale/rotation/opacity),
+    //              matched across EVERY component — so the Transform effect's
+    //              "Position"/"Scale"/etc. are found just like the Motion ones.
+    //   anyKeyed = also include ANY param that currently has 2+ keyframes, which
+    //              covers third-party effect parameters with arbitrary names.
+    // Deduped by component:param identity so nothing is processed twice.
+    function collectProps(item, wanted, anyKeyed) {
+        var found = []; // { id, param, name, comp }
         var comps = item.components;
         if (!comps) return found;
+
+        var wantSet = {};
+        for (var w = 0; w < wanted.length; w++) wantSet[wanted[w]] = true;
+
         for (var ci = 0; ci < comps.numItems; ci++) {
             var comp = comps[ci];
+            var compName; try { compName = comp.displayName; } catch (e) { compName = "Effect"; }
             var params = comp.properties;
             if (!params) continue;
             for (var pi = 0; pi < params.numItems; pi++) {
                 var param = params[pi];
-                var name;
-                try { name = param.displayName; } catch (e) { name = ""; }
-                for (var w = 0; w < wanted.length; w++) {
-                    var id = wanted[w];
-                    var aliases = TARGETS[id] || [];
-                    for (var a = 0; a < aliases.length; a++) {
-                        if (name && name.toLowerCase() === aliases[a].toLowerCase()) {
-                            found.push({ id: id, param: param, name: name });
-                        }
-                    }
+                var name; try { name = param.displayName; } catch (e2) { name = ""; }
+                var id = targetIdForName(name);
+                var include = false;
+                if (id && wantSet[id]) include = true;
+                if (!include && anyKeyed && paramKeyCount(param) >= 2) include = true;
+                if (include) {
+                    var key = ci + ":" + pi;
+                    var dup = false;
+                    for (var f = 0; f < found.length; f++) { if (found[f].key === key) { dup = true; break; } }
+                    if (!dup) found.push({ id: id || "custom", param: param, name: name, comp: compName, key: key });
                 }
             }
         }
@@ -320,6 +356,61 @@ var MotionEase = (function () {
         return JSON.stringify(info);
     }
 
+    // Scan the selected clip and report, per target property, whether it exists
+    // and whether it currently has keyframes — plus every effect component that
+    // holds keyed params (Transform, third-party plugins). Drives the panel's
+    // per-property keyframe indicators.
+    function scanSelection() {
+        var seq = activeSeq();
+        var out = {
+            clips: 0,
+            sequence: seq ? seq.name : "",
+            props: {
+                position: { present: false, keyed: false, keys: 0 },
+                scale:    { present: false, keyed: false, keys: 0 },
+                rotation: { present: false, keyed: false, keys: 0 },
+                opacity:  { present: false, keyed: false, keys: 0 }
+            },
+            effects: [],   // [{ name, params:[{name, keys}] }] components with keyed params
+            anyKeyed: 0
+        };
+        if (!seq) return JSON.stringify(out);
+
+        var items = getSelectedItems(seq);
+        out.clips = items.length;
+        if (!items.length) return JSON.stringify(out);
+
+        var comps = items[0].components;
+        if (comps) {
+            for (var ci = 0; ci < comps.numItems; ci++) {
+                var comp = comps[ci];
+                var compName; try { compName = comp.displayName; } catch (e) { compName = "Effect"; }
+                var params = comp.properties;
+                if (!params) continue;
+                var effEntry = null;
+                for (var pi = 0; pi < params.numItems; pi++) {
+                    var param = params[pi];
+                    var name; try { name = param.displayName; } catch (e2) { name = ""; }
+                    var keys = paramKeyCount(param);
+                    if (keys >= 2) out.anyKeyed++;
+
+                    var id = targetIdForName(name);
+                    if (id && out.props[id]) {
+                        out.props[id].present = true;
+                        if (keys > out.props[id].keys) out.props[id].keys = keys;
+                        if (keys >= 2) out.props[id].keyed = true;
+                    }
+                    if (keys >= 2) {
+                        if (!effEntry) effEntry = { name: compName, params: [] };
+                        effEntry.params.push({ name: name, keys: keys });
+                    }
+                }
+                if (effEntry && effEntry.params.length) out.effects.push(effEntry);
+            }
+        }
+        return JSON.stringify(out);
+    }
+
     function apply(payloadJson) {
         var result = { ok: false, applied: 0, message: "", details: [] };
         try {
@@ -337,6 +428,7 @@ var MotionEase = (function () {
             }
 
             var wanted = payload.props || [];
+            var anyKeyed = !!payload.anyKeyed;   // also ease any keyframed effect param
             var applied = 0, skipped = 0;
 
             // native ease shape; default to Ease In-Out if the panel sent nothing
@@ -346,12 +438,12 @@ var MotionEase = (function () {
             };
 
             for (var i = 0; i < items.length; i++) {
-                var props = collectProps(items[i], wanted);
+                var props = collectProps(items[i], wanted, anyKeyed);
                 for (var p = 0; p < props.length; p++) {
                     var rep = (method === "bake")
                         ? bakeParam(props[p].param, curve, seq)
                         : easeParamNative(props[p].param, easeOpts, seq);
-                    result.details.push(props[p].name + ": " + rep.reason);
+                    result.details.push(props[p].comp + " › " + props[p].name + ": " + rep.reason);
                     if (rep.applied) applied++; else skipped++;
                 }
             }
@@ -373,6 +465,7 @@ var MotionEase = (function () {
     return {
         ping: ping,
         getSelectionInfo: getSelectionInfo,
+        scanSelection: scanSelection,
         apply: apply
     };
 })();
@@ -380,4 +473,5 @@ var MotionEase = (function () {
 // Expose bare functions too, in case evalScript targets the global scope.
 function ME_ping() { return MotionEase.ping(); }
 function ME_getSelectionInfo() { return MotionEase.getSelectionInfo(); }
+function ME_scanSelection() { return MotionEase.scanSelection(); }
 function ME_apply(p) { return MotionEase.apply(p); }
