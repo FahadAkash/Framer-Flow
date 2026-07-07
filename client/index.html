@@ -10,7 +10,10 @@
     <div id="app">
         <!-- Title bar -->
         <header class="titlebar">
-            <span class="title">MotionEase Graph Editor</span>
+            <div class="title-wrap">
+                <span class="title">MotionEase Graph Editor</span>
+                <span class="byline">by Fahad Akash</span>
+            </div>
             <span class="status" id="hostStatus"><span class="dot"></span> Connecting…</span>
         </header>
 
@@ -72,14 +75,16 @@
             <div class="preset-scroll" id="presetScroll"></div>
         </section>
 
+        <div class="credit">MotionEase — crafted by <b>Fahad Akash</b></div>
+
         <!-- Apply bar -->
         <footer class="applybar">
             <div class="apply-mode">
-                <label class="radio" title="Bakes a few keyframes that trace your exact curve (incl. overshoot). Reliable on every Premiere version. Recommended."><input type="radio" name="applyMode" value="bake" checked /><span>Smooth ease</span></label>
-                <label class="radio" title="Keeps only your 2 keyframes and applies Premiere's bezier ease. Cleanest, but a generic ease — can't reproduce the exact curve."><input type="radio" name="applyMode" value="native" /><span>Native 2-key</span><em class="ease-type" id="easeType">In-Out</em></label>
+                <label class="radio" title="Traces your exact curve with a smooth set of keyframes (~16). Best fidelity. Recommended."><input type="radio" name="applyMode" value="smooth" data-density="16" checked /><span>Smooth</span></label>
+                <label class="radio" title="Traces your curve with only a few keyframes (~6). Cleaner &amp; lighter, still accurate — and it always applies."><input type="radio" name="applyMode" value="minimal" data-density="6" /><span>Minimal</span></label>
                 <span class="dens" id="densWrap">
                     <button class="step" id="densMinus" type="button" tabindex="-1" aria-label="Fewer keyframes">&minus;</button>
-                    <input id="densInput" type="number" min="4" max="120" value="12" />
+                    <input id="densInput" type="number" min="3" max="120" value="16" />
                     <button class="step" id="densPlus" type="button" tabindex="-1" aria-label="More keyframes">+</button>
                     <span class="dens-label">kf</span>
                 </span>

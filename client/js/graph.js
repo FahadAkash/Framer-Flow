@@ -148,18 +148,32 @@
         var colA = this._css("--handle-a", "#c084fc");
         var colB = this._css("--handle-b", "#f59e0b");
 
-        // grid: thirds
+        // grid: quarters on both axes
         ctx.strokeStyle = grid;
         ctx.lineWidth = 1;
-        for (var i = 0; i <= 3; i++) {
-            var gx = p.x + (i / 3) * p.w;
+        for (var i = 1; i < 4; i++) {
+            var gx = p.x + (i / 4) * p.w;
             ctx.beginPath(); ctx.moveTo(gx, p.y); ctx.lineTo(gx, p.y + p.h); ctx.stroke();
+            var gy = p.y + (i / 4) * p.h;
+            ctx.beginPath(); ctx.moveTo(p.x, gy); ctx.lineTo(p.x + p.w, gy); ctx.stroke();
         }
-        // horizontal reference lines at value 0 and 1
+        // plot border
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.strokeRect(p.x + 0.5, p.y + 0.5, p.w - 1, p.h - 1);
+        // brighter reference lines at value 0 and 1
+        ctx.strokeStyle = "rgba(255,255,255,0.11)";
         [0, 1].forEach(function (v) {
             var yy = this.toPx(0, v).y;
             ctx.beginPath(); ctx.moveTo(p.x, yy); ctx.lineTo(p.x + p.w, yy); ctx.stroke();
         }, this);
+        // axis labels
+        ctx.fillStyle = this._css("--muted-2", "#5b6675");
+        ctx.font = "10px -apple-system, 'Segoe UI', sans-serif";
+        ctx.textAlign = "right"; ctx.textBaseline = "middle";
+        ctx.fillText("1", p.x - 7, this.toPx(0, 1).y);
+        ctx.fillText("0", p.x - 7, this.toPx(0, 0).y);
+        ctx.textAlign = "center"; ctx.textBaseline = "top";
+        ctx.fillText(this.mode === "speed" ? "speed →" : "time →", p.x + p.w / 2, p.y + p.h + 6);
 
         if (this.mode === "value") this._drawValue(ctx, curveCol);
         else this._drawSpeed(ctx, curveCol);
@@ -169,59 +183,78 @@
         var h1 = this.toPx(this.cp[0], this.cp[1]);
         var h2 = this.toPx(this.cp[2], this.cp[3]);
 
-        ctx.strokeStyle = "rgba(192,132,252,0.5)";
-        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(192,132,252,0.55)";
+        ctx.setLineDash([3, 3]);
         ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(h1.x, h1.y); ctx.stroke();
-        ctx.strokeStyle = "rgba(245,158,11,0.5)";
+        ctx.strokeStyle = "rgba(245,158,11,0.55)";
         ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(h2.x, h2.y); ctx.stroke();
         ctx.setLineDash([]);
 
         // anchors
-        this._dot(ctx, a0.x, a0.y, 5, "#ffffff", "#0e1116");
-        this._dot(ctx, a1.x, a1.y, 5, "#ffffff", "#0e1116");
-        // control handles
-        this._dot(ctx, h1.x, h1.y, 7, colA, "#0e1116");
-        this._dot(ctx, h2.x, h2.y, 7, colB, "#0e1116");
+        this._dot(ctx, a0.x, a0.y, 4.5, "#e7ecf3", "#0e1116");
+        this._dot(ctx, a1.x, a1.y, 4.5, "#e7ecf3", "#0e1116");
+        // control handles (glow, brighter while dragging)
+        this._handle(ctx, h1.x, h1.y, colA, this.dragging === 1);
+        this._handle(ctx, h2.x, h2.y, colB, this.dragging === 2);
 
+        ctx.restore();
+    };
+
+    GraphEditor.prototype._strokeCurve = function (ctx, pts, col, glow) {
+        ctx.save();
+        ctx.shadowColor = glow; ctx.shadowBlur = 8;
+        ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.lineCap = "round";
+        ctx.beginPath();
+        for (var b = 0; b < pts.length; b++) {
+            if (b === 0) ctx.moveTo(pts[b].x, pts[b].y); else ctx.lineTo(pts[b].x, pts[b].y);
+        }
+        ctx.stroke();
         ctx.restore();
     };
 
     GraphEditor.prototype._drawValue = function (ctx, col) {
         var ease = Bezier.CubicBezier(this.cp);
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 2.5;
+        var p = this.plot();
+        var baseY = this.toPx(0, 0).y;
+        var pts = [];
+        for (var i = 0; i <= 140; i++) { var x = i / 140; pts.push(this.toPx(x, ease(x))); }
+
+        // gradient area fill under the curve
+        var grad = ctx.createLinearGradient(0, p.y, 0, baseY);
+        grad.addColorStop(0, "rgba(59,130,246,0.30)");
+        grad.addColorStop(1, "rgba(59,130,246,0.02)");
         ctx.beginPath();
-        for (var i = 0; i <= 120; i++) {
-            var x = i / 120;
-            var pt = this.toPx(x, ease(x));
-            if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.stroke();
+        ctx.moveTo(pts[0].x, baseY);
+        for (var a = 0; a < pts.length; a++) ctx.lineTo(pts[a].x, pts[a].y);
+        ctx.lineTo(pts[pts.length - 1].x, baseY);
+        ctx.closePath();
+        ctx.fillStyle = grad; ctx.fill();
+
+        this._strokeCurve(ctx, pts, col, "rgba(59,130,246,0.65)");
     };
 
     GraphEditor.prototype._drawSpeed = function (ctx, col) {
-        var vel = Bezier.sampleVelocity(this.cp, 120);
+        var vel = Bezier.sampleVelocity(this.cp, 140);
         var peak = vel.peak || 1;
-        // faint value curve behind for reference
-        ctx.strokeStyle = "rgba(59,130,246,0.25)";
-        ctx.lineWidth = 1.5;
         var ease = Bezier.CubicBezier(this.cp);
+
+        // faint value curve behind for reference
+        var vpts = [];
+        for (var k = 0; k <= 140; k++) { var xx = k / 140; vpts.push(this.toPx(xx, ease(xx))); }
+        ctx.strokeStyle = "rgba(59,130,246,0.22)";
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        for (var k = 0; k <= 120; k++) {
-            var xx = k / 120, pv = this.toPx(xx, ease(xx));
-            if (k === 0) ctx.moveTo(pv.x, pv.y); else ctx.lineTo(pv.x, pv.y);
-        }
+        for (var m = 0; m < vpts.length; m++) { if (m === 0) ctx.moveTo(vpts[m].x, vpts[m].y); else ctx.lineTo(vpts[m].x, vpts[m].y); }
         ctx.stroke();
-        // velocity curve, normalized so peak maps to 1
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
+
+        // velocity curve (normalized so peak maps to 1), with glow
+        var spts = [];
         for (var i = 0; i < vel.points.length; i++) {
             var d = vel.points[i];
-            var pt = this.toPx(d.t, d.v / peak);
-            if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+            spts.push(this.toPx(d.t, d.v / peak));
         }
-        ctx.stroke();
+        this._strokeCurve(ctx, spts, col, "rgba(59,130,246,0.55)");
     };
 
     GraphEditor.prototype._dot = function (ctx, x, y, r, fill, ring) {
@@ -231,6 +264,20 @@
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fillStyle = fill; ctx.fill();
+    };
+
+    GraphEditor.prototype._handle = function (ctx, x, y, color, active) {
+        if (active) {
+            ctx.save();
+            ctx.globalAlpha = 0.2;
+            ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2);
+            ctx.fillStyle = color; ctx.fill();
+            ctx.restore();
+        }
+        ctx.save();
+        ctx.shadowColor = color; ctx.shadowBlur = active ? 14 : 7;
+        this._dot(ctx, x, y, 7, color, "#0e1116");
+        ctx.restore();
     };
 
     root.GraphEditor = GraphEditor;

@@ -22,7 +22,6 @@
         densInput: document.getElementById("densInput"),
         densMinus: document.getElementById("densMinus"),
         densPlus: document.getElementById("densPlus"),
-        easeType: document.getElementById("easeType"),
         modeCaption: document.getElementById("modeCaption"),
         anyKeyed: document.getElementById("anyKeyed"),
         effectsLine: document.getElementById("effectsLine"),
@@ -61,9 +60,6 @@
             els.readout.textContent =
                 "cubic-bezier(" + cp.map(function (n) { return n.toFixed(2); }).join(", ") + ")";
             markActivePreset(cp);
-            var ease = computeEase(cp);
-            els.easeType.textContent = ease.label;
-            els.easeType.className = "ease-type" + (ease.label === "Linear" ? " linear" : "");
         }
     });
     editor.onChange(editor.cp, editor.mode);
@@ -179,31 +175,33 @@
     requestAnimationFrame(loop);
     els.replayBtn.addEventListener("click", function () { t0 = null; });
 
-    // ---- apply mode (native ease vs bake) -----------------------------------
-    function applyMethod() {
+    // ---- apply mode (Smooth vs Minimal — both bake, differ in density) ------
+    function currentMode() {
         var checked = document.querySelector('input[name="applyMode"]:checked');
-        return checked ? checked.value : "native";
+        return checked ? checked.value : "smooth";
     }
-    function syncDensVisibility() {
-        var bake = applyMethod() === "bake";
-        els.densWrap.classList.toggle("hidden", !bake);
-        els.modeCaption.textContent = bake
-            ? "Traces your exact curve with a few keyframes — reliable. Recommended."
-            : "Keeps only your 2 keyframes; applies a generic bezier ease (not the exact curve).";
+    function syncMode() {
+        els.modeCaption.textContent = currentMode() === "minimal"
+            ? "Only a few keyframes — cleaner & lighter, still traces your curve."
+            : "A smooth set of keyframes tracing your exact curve. Best fidelity.";
     }
     Array.prototype.forEach.call(document.querySelectorAll('input[name="applyMode"]'), function (r) {
-        r.addEventListener("change", syncDensVisibility);
+        r.addEventListener("change", function () {
+            var d = r.getAttribute("data-density");
+            if (r.checked && d) els.densInput.value = d;   // preset the kf count
+            syncMode();
+        });
     });
-    syncDensVisibility();
+    syncMode();
 
     // custom stepper for the keyframe-count field (native spinner is hidden)
-    function clampDens(v) { return Math.max(4, Math.min(120, v)); }
+    function clampDens(v) { return Math.max(3, Math.min(120, v)); }
     function nudgeDens(delta) {
         var v = clampDens((parseInt(els.densInput.value, 10) || 12) + delta);
         els.densInput.value = v;
     }
-    els.densMinus.addEventListener("click", function () { nudgeDens(-4); });
-    els.densPlus.addEventListener("click", function () { nudgeDens(4); });
+    els.densMinus.addEventListener("click", function () { nudgeDens(-2); });
+    els.densPlus.addEventListener("click", function () { nudgeDens(2); });
     els.densInput.addEventListener("change", function () {
         els.densInput.value = clampDens(parseInt(els.densInput.value, 10) || 12);
     });
@@ -214,23 +212,17 @@
         if (!props.length && !els.anyKeyed.checked) { toast("Pick a property, or tick keyframed effect props", "err"); return; }
         if (!hostReady) { toast("Not running inside Premiere Pro", "err"); return; }
 
-        var method = applyMethod();
-        var density = Math.max(4, Math.min(120, parseInt(els.densInput.value, 10) || 12));
-        var ease = computeEase(editor.cp);
+        var density = Math.max(3, Math.min(120, parseInt(els.densInput.value, 10) || 12));
         var payload = {
             cp: editor.cp,
             mode: editor.mode,            // graph view: value | speed
-            method: method,               // native | bake
+            method: "bake",               // always bake — the reliable path in Premiere
             props: props,
             anyKeyed: !!els.anyKeyed.checked,   // also ease keyframed effect params
             samples: density,
-            easeStart: ease.easeStart,    // native mode: bezier the first keyframe
-            easeEnd: ease.easeEnd,        // native mode: bezier the last keyframe
             // adaptive: keyframes only where the curve bends, error-bounded,
-            // capped at the kf field. Far fewer keys than even sampling.
-            curve: method === "bake"
-                ? Bezier.sampleCurveAdaptive(editor.cp, { tol: 0.006, maxPoints: density, minPoints: 3 })
-                : Bezier.sampleCurve(editor.cp, density)
+            // capped at the kf field. Minimal mode just uses a lower cap.
+            curve: Bezier.sampleCurveAdaptive(editor.cp, { tol: 0.006, maxPoints: density, minPoints: 3 })
         };
         var payloadStr = JSON.stringify(payload);
         els.applyBtn.disabled = true;
