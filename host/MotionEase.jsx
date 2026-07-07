@@ -28,6 +28,14 @@ var MotionEase = (function () {
     // a value (Hold) instead of smoothing it, change this to 1.
     var BEZIER_INTERP = KF.BEZIER;
 
+    // CRITICAL for performance: passing updateUI=true on every keyframe write
+    // forces Premiere to redraw the Effect Controls + Program monitor after each
+    // call. Across 4 properties x ~12 keys that's 100+ full redraws in a loop and
+    // Premiere hangs. So we suppress UI updates during the loop (false) and force
+    // a single refresh only on the very last write of each property.
+    var NO_UI = false;
+    var DO_UI = true;
+
     // Panel prop id -> Premiere property displayName(s)
     var TARGETS = {
         position: ["Position"],
@@ -199,7 +207,7 @@ var MotionEase = (function () {
     }
 
     function setKeyLinear(param, time) {
-        try { param.setInterpolationTypeAtKey(time, KF.LINEAR, true); } catch (e) {}
+        try { param.setInterpolationTypeAtKey(time, KF.LINEAR, false); } catch (e) {}
     }
 
     // Bake the curve onto ONE segment (the keyframe pair at the playhead) of a
@@ -228,18 +236,20 @@ var MotionEase = (function () {
         try { vStart = param.getValueAtKey(aRaw); } catch (e) { report.reason = "read start failed"; return report; }
         try { vEnd = param.getValueAtKey(bRaw); } catch (e) { report.reason = "read end failed"; return report; }
 
-        // clear only this segment, then rebuild from the curve
-        try { param.removeKeyRange(aNum, bNum, true); } catch (e) {}
+        // clear only this segment, then rebuild from the curve (no UI redraw yet)
+        try { param.removeKeyRange(aNum, bNum, NO_UI); } catch (e) {}
 
         var span = bNum - aNum;
         var count = 0;
+        var lastIdx = curve.length - 1;
         for (var c = 0; c < curve.length; c++) {
             var pt = curve[c];
             var time = aNum + pt.t * span;         // stay in the key's own domain
             var value = lerp(vStart, vEnd, pt.v);
+            var refresh = (c === lastIdx) ? DO_UI : NO_UI; // one redraw at the end
             try { param.addKey(time); } catch (eAdd) {}
             try {
-                param.setValueAtKey(time, value, true);
+                param.setValueAtKey(time, value, refresh);
                 setKeyLinear(param, time);
                 count++;
             } catch (eSet) {}
@@ -285,8 +295,8 @@ var MotionEase = (function () {
         var typeStart = easeStart ? BEZIER_INTERP : KF.LINEAR;
         var typeEnd = easeEnd ? BEZIER_INTERP : KF.LINEAR;
         var n = 0;
-        try { param.setInterpolationTypeAtKey(seg.a.raw, typeStart, true); n++; } catch (e) {}
-        try { param.setInterpolationTypeAtKey(seg.b.raw, typeEnd, true); n++; } catch (e) {}
+        try { param.setInterpolationTypeAtKey(seg.a.raw, typeStart, NO_UI); n++; } catch (e) {}
+        try { param.setInterpolationTypeAtKey(seg.b.raw, typeEnd, DO_UI); n++; } catch (e) {}
 
         report.applied = n > 0;
         report.reason = report.applied
