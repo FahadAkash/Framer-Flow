@@ -13,7 +13,7 @@
             <span class="status" id="hostStatus" title="Connection to Premiere Pro"><span class="dot"></span> Connecting…</span>
             <h1 class="hero-title" title="FrameFlow — an After Effects–style value & speed graph editor for Premiere Pro">FrameFlow</h1>
             <p class="hero-sub">After Effects–style graph editor for Premiere Pro</p>
-            <p class="hero-meta">made by <b title="Author">Fahad Akash</b> <span class="ver" title="Version 1.0">v1.0</span></p>
+            <p class="hero-meta">made by <b title="Author">Fahad Akash</b> <span class="ver" title="Version 1.1">v1.1</span></p>
         </header>
 
         <!-- Properties -->
@@ -74,7 +74,7 @@
             <div class="preset-scroll" id="presetScroll"></div>
         </section>
 
-        <div class="credit">FrameFlow v1.0 — crafted by <b>Fahad Akash</b></div>
+        <div class="credit">FrameFlow v1.1 — crafted by <b>Fahad Akash</b></div>
 
         <!-- Apply bar -->
         <footer class="applybar">
@@ -87,11 +87,17 @@
                     <button class="step" id="densPlus" type="button" tabindex="-1" aria-label="More keyframes" title="More keyframes">+</button>
                     <span class="dens-label" title="keyframes">kf</span>
                 </span>
+                <select class="segsel" id="segMode" title="Which pair of YOUR keyframes to bake between. Keyframes FrameFlow baked earlier are not counted as pairs — only the ones you placed by hand.">
+                    <option value="playhead" selected>Pair at playhead</option>
+                    <option value="last">Newest pair</option>
+                    <option value="first">First pair</option>
+                    <option value="all">Every pair</option>
+                </select>
                 <span class="mode-caption" id="modeCaption"></span>
             </div>
             <div class="apply-actions">
                 <button class="undo-btn" id="undoBtn" title="Restore properties to how they were before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
-                <button class="apply-btn" id="applyBtn" title="Bake the ease onto the selected clip's ticked properties (playhead picks the keyframe segment)">Apply to selection</button>
+                <button class="apply-btn" id="applyBtn" title="Bake the ease onto the selected clip's ticked properties, between the keyframe pair chosen on the left">Apply to selection</button>
             </div>
         </footer>
 

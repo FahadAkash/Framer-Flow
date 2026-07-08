@@ -20,6 +20,7 @@
         undoBtn: document.getElementById("undoBtn"),
         densWrap: document.getElementById("densWrap"),
         densInput: document.getElementById("densInput"),
+        segMode: document.getElementById("segMode"),
         densMinus: document.getElementById("densMinus"),
         densPlus: document.getElementById("densPlus"),
         modeCaption: document.getElementById("modeCaption"),
@@ -222,6 +223,8 @@
             method: "bake",               // always bake — the reliable path in Premiere
             props: props,
             anyKeyed: !!els.anyKeyed.checked,   // also ease keyframed effect params
+            // which of YOUR keyframe pairs to bake between (baked keys don't count)
+            segment: els.segMode ? els.segMode.value : "playhead",
             samples: density,
             // adaptive: keyframes only where the curve bends, error-bounded,
             // capped at the kf field. Minimal mode just uses a lower cap.

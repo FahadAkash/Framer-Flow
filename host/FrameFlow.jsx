@@ -6,10 +6,15 @@
  *   FrameFlow.getSelectionInfo()   -> JSON { clips, sequence }
  *   FrameFlow.apply(payloadJson)   -> JSON { ok, applied, message, details }
  *
- * apply() reads the first & last keyframe of each selected property, then
+ * apply() picks ONE pair of your hand-placed keyframes (an "anchor pair") and
  * bakes a dense set of keyframes between them following the shaped curve.
  * Dense baking reproduces the exact motion regardless of Premiere's limited
  * bezier-handle API — the value graph you drew is the value graph you get.
+ *
+ * Because a bake fills the pair with interior keys, later Applies must be able
+ * to tell YOUR keyframes from the ones we baked — otherwise every adjacent pair
+ * looks like a candidate segment and Apply lands on a 2-frame sliver. bakedReg
+ * records what we created; anchorsOf() subtracts it to recover your keyframes.
  **********************************************************************/
 
 //@include "./lib/json2.jsx"
@@ -17,7 +22,7 @@
 var FrameFlow = (function () {
     "use strict";
 
-    var VERSION = "1.0.0";
+    var VERSION = "1.1.0";
 
     // Undo history: each Apply pushes a set of per-property snapshots taken
     // BEFORE it modified anything. restoreLast() pops and rewrites them. The
@@ -25,6 +30,14 @@ var FrameFlow = (function () {
     // references and this stack survive between panel calls.
     var undoStack = [];
     var UNDO_LIMIT = 25;
+
+    // Baked-key registry: paramKey -> [numeric raw key times FrameFlow created].
+    // Without this, a second Apply can't tell YOUR keyframes apart from the dozen
+    // interior keys the first Apply baked between them — every adjacent pair looks
+    // like a segment and the pair you actually drew no longer exists. Subtracting
+    // this set from getKeys() leaves the ANCHORS: the keyframes you placed by hand.
+    // Lives in the persistent ExtendScript engine, so it survives panel calls.
+    var bakedReg = {};
 
     // Premiere keyframe interpolation constants (setInterpolationTypeAtKey).
     // Types shown in the keyframe right-click menu: Linear, Bezier, Auto Bezier,
@@ -170,54 +183,154 @@ var FrameFlow = (function () {
         return null;
     }
 
-    // From a property's raw keyframe list, pick the ONE segment (adjacent pair)
-    // the playhead sits inside — this scopes an Apply to just the two keyframes
-    // you're working on. The playhead comes from the sequence (sequence time) but
-    // keyframe times may be clip-relative, so we try several reference frames
-    // (sequence, clip-start-relative, clip-start+in-point) and use whichever puts
-    // the playhead inside the keyframe range.
-    function pickSegment(keys, seq, item) {
+    // ---- baked-key registry ----------------------------------------------
+
+    // Stable identity for a TrackItem, so the registry survives re-selection.
+    function itemKey(item) {
+        try { if (item.nodeId) return String(item.nodeId); } catch (e) {}
+        var n = ""; try { n = item.name; } catch (e2) {}
+        var s = ""; try { s = String(timeToSeconds(item.start)); } catch (e3) {}
+        return n + "@" + s;
+    }
+
+    // Key times come back from getKeys() as the same floats we stored, but ticks
+    // are ~2.5e11/second so compare with a relative epsilon rather than ==.
+    function sameTime(a, b) {
+        return Math.abs(a - b) <= Math.max(1e-9, Math.abs(a) * 1e-9);
+    }
+
+    function isBaked(pkey, n) {
+        var list = bakedReg[pkey];
+        if (!list) return false;
+        for (var i = 0; i < list.length; i++) if (sameTime(list[i], n)) return true;
+        return false;
+    }
+
+    // Record the keys that now sit strictly between two anchors as OUR bake, using
+    // the times Premiere actually snapped them to (re-read, not the times we asked
+    // for). Replaces any earlier record for the same span so re-baking is clean.
+    function registerBaked(param, pkey, aNum, bNum) {
+        var kept = [];
+        var prev = bakedReg[pkey] || [];
+        for (var i = 0; i < prev.length; i++) {
+            if (!(prev[i] > aNum && prev[i] < bNum)) kept.push(prev[i]);
+        }
+        try {
+            var keys = param.getKeys();
+            for (var k = 0; k < keys.length; k++) {
+                var n = rawNum(keys[k]);
+                if (n !== null && n > aNum + 1e-6 && n < bNum - 1e-6) kept.push(n);
+            }
+        } catch (e) {}
+        bakedReg[pkey] = kept;
+    }
+
+    // ---- segment resolution ----------------------------------------------
+
+    function sortedKeys(param) {
         var arr = [];
+        var keys;
+        try { keys = param.getKeys(); } catch (e) { return arr; }
+        if (!keys) return arr;
         for (var i = 0; i < keys.length; i++) {
             var n = rawNum(keys[i]);
             if (n !== null) arr.push({ raw: keys[i], n: n });
         }
         arr.sort(function (x, y) { return x.n - y.n; });
-        if (arr.length < 2) return null;
+        return arr;
+    }
+
+    // YOUR keyframes: every key minus the ones a previous Apply baked. If the
+    // registry is empty (first Apply, or Premiere was restarted) this is just the
+    // full list, which is the correct behaviour for un-baked keyframes.
+    function anchorsOf(param, pkey) {
+        var all = sortedKeys(param);
+        if (!pkey || !bakedReg[pkey]) return all;
+        var out = [];
+        for (var i = 0; i < all.length; i++) {
+            if (!isBaked(pkey, all[i].n)) out.push(all[i]);
+        }
+        return (out.length >= 2) ? out : all;
+    }
+
+    // Map the sequence playhead into the keyframes' own reference frame. Premiere
+    // reports keyframe times clip-relative (inPoint + offset from clip start) on
+    // most versions and sequence-relative on others, so try clip-relative FIRST —
+    // the raw sequence time can coincidentally land inside a wide key range and
+    // silently select the wrong segment.
+    function playheadInKeyDomain(anchors, seq, item) {
+        var P = playheadSeconds(seq);
+        if (P === null) return null;
 
         var nums = [];
-        for (var j = 0; j < arr.length; j++) nums.push(arr[j].n);
+        for (var i = 0; i < anchors.length; i++) nums.push(anchors[i].n);
         var toSec = toSecondsFn(nums);
-        var loSec = toSec(arr[0].n), hiSec = toSec(arr[arr.length - 1].n);
+        var lo = toSec(anchors[0].n), hi = toSec(anchors[anchors.length - 1].n);
 
-        var P = playheadSeconds(seq);
-        var Peff = null;
-        if (P !== null) {
-            // candidate playhead positions in the keyframes' own reference frame
-            var startSec = item ? timeToSeconds(item.start) : null;
-            var inSec = item ? timeToSeconds(item.inPoint) : null;
-            var candidates = [P];
-            if (startSec !== null) candidates.push(P - startSec);
-            if (startSec !== null && inSec !== null) candidates.push(P - startSec + inSec);
-            for (var ci = 0; ci < candidates.length; ci++) {
-                var cand = candidates[ci];
-                if (cand >= loSec - 1e-3 && cand <= hiSec + 1e-3) { Peff = cand; break; }
-            }
-            if (Peff === null) Peff = P; // nothing landed in range; use raw (falls back below)
+        var startSec = item ? timeToSeconds(item.start) : null;
+        var inSec = item ? timeToSeconds(item.inPoint) : null;
+        var cands = [];
+        if (startSec !== null && inSec !== null) cands.push(P - startSec + inSec);
+        if (startSec !== null) cands.push(P - startSec);
+        cands.push(P);
+
+        var best = null, bestD = Infinity;
+        for (var c = 0; c < cands.length; c++) {
+            var v = cands[c];
+            if (v >= lo - 1e-3 && v <= hi + 1e-3) return { p: v, inRange: true, toSec: toSec };
+            var d = (v < lo) ? (lo - v) : (v - hi);
+            if (d < bestD) { bestD = d; best = v; }
         }
+        return { p: best, inRange: false, toSec: toSec };
+    }
 
-        var idx = -1;
-        if (Peff !== null) {
-            for (var s = 0; s < arr.length - 1; s++) {
-                var a = toSec(arr[s].n), b = toSec(arr[s + 1].n);
-                if (Peff >= a - 1e-3 && Peff <= b + 1e-3) { idx = s; break; }
-            }
-            if (idx < 0) idx = (Peff < loSec) ? 0 : arr.length - 2; // outside -> nearest end
+    // Which anchor pair the playhead sits in. Half-open [a,b) so a playhead parked
+    // exactly on a shared keyframe resolves forward instead of ambiguously; the
+    // last segment is closed so a playhead on the final keyframe still matches.
+    // When the playhead is outside every segment we pick the NEAREST one — never
+    // blindly segment 0, which is what made every Apply hit the first two keys.
+    function segmentIndexAtPlayhead(anchors, seq, item) {
+        var last = anchors.length - 2;
+        var ph = playheadInKeyDomain(anchors, seq, item);
+        if (!ph || ph.p === null) return last;   // no playhead info -> newest segment
+
+        var toSec = ph.toSec;
+        var s, a, b;
+        for (s = 0; s <= last; s++) {
+            a = toSec(anchors[s].n); b = toSec(anchors[s + 1].n);
+            var hit = (s === last) ? (ph.p <= b + 1e-3) : (ph.p < b - 1e-3);
+            if (ph.p >= a - 1e-3 && hit) return s;
+        }
+        var bestIdx = last, bestD = Infinity;
+        for (s = 0; s <= last; s++) {
+            a = toSec(anchors[s].n); b = toSec(anchors[s + 1].n);
+            var d = (ph.p < a) ? (a - ph.p) : (ph.p > b ? ph.p - b : 0);
+            if (d < bestD) { bestD = d; bestIdx = s; }
+        }
+        return bestIdx;
+    }
+
+    // Resolve which anchor pair(s) an Apply should write to.
+    //   playhead (default) -> the one segment the playhead is in
+    //   last               -> the newest pair (highest times) — the two keys you just added
+    //   first              -> the opening pair
+    //   all                -> every anchor pair on the property
+    function resolveSegments(param, pkey, seq, item, mode) {
+        var anchors = anchorsOf(param, pkey);
+        if (anchors.length < 2) return null;
+
+        var segs = [];
+        var last = anchors.length - 2;
+        if (mode === "all") {
+            for (var i = 0; i <= last; i++) segs.push(i);
+        } else if (mode === "last") {
+            segs.push(last);
+        } else if (mode === "first") {
+            segs.push(0);
         } else {
-            idx = 0; // no playhead info at all
+            segs.push(segmentIndexAtPlayhead(anchors, seq, item));
         }
-
-        return { list: arr, a: arr[idx], b: arr[idx + 1], multi: arr.length > 2, idx: idx };
+        return { anchors: anchors, indices: segs, total: last + 1 };
     }
 
     // Find matching ComponentParams on a TrackItem for the requested props.
@@ -371,8 +484,14 @@ var FrameFlow = (function () {
 
     // Capture a param's full keyframe state (times, values, interpolation) so it
     // can be rewritten verbatim later. Keeps a live reference to the param.
-    function snapshotParam(param, label) {
-        var snap = { param: param, label: label || "", timeVarying: false, keys: [] };
+    function snapshotParam(param, label, pkey) {
+        var snap = { param: param, label: label || "", pkey: pkey || "", timeVarying: false, keys: [], baked: null };
+        // remember which keys were OURS before this Apply, so undo can put the
+        // anchor/baked distinction back exactly as it was
+        if (pkey && bakedReg[pkey]) {
+            snap.baked = [];
+            for (var b = 0; b < bakedReg[pkey].length; b++) snap.baked.push(bakedReg[pkey][b]);
+        }
         try { snap.timeVarying = param.isTimeVarying(); } catch (e) {}
         if (snap.timeVarying) {
             try {
@@ -397,6 +516,13 @@ var FrameFlow = (function () {
     // then re-create the snapshot's keys/values/interpolation.
     function restoreParam(snap) {
         var param = snap.param;
+
+        // roll the baked-key registry back with the keyframes
+        if (snap.pkey) {
+            if (snap.baked === null) delete bakedReg[snap.pkey];
+            else bakedReg[snap.pkey] = snap.baked;
+        }
+
         // remove all current keys (back to front)
         try {
             var cur = param.getKeys();
@@ -427,43 +553,31 @@ var FrameFlow = (function () {
     // SAFE: never removes the two endpoint keyframes — it only removes previously
     // baked interior keys and adds new interior keys between your endpoints. Worst
     // case (a write fails) your original keyframes are still intact.
-    function bakeParam(param, curve, seq, item) {
-        var report = { applied: false, reason: "" };
+    // Bake the curve between ONE anchor pair. Removes only the keys strictly
+    // between the two anchors (whether hand-placed or from an earlier bake), then
+    // lays the curve down. The anchors themselves are never removed.
+    function bakeSegment(param, curve, aItem, bItem) {
+        var aRaw = aItem.raw, bRaw = bItem.raw;
+        var aNum = aItem.n, bNum = bItem.n;
+        var out = { ok: false, count: 0, fmt: keyFormat(aRaw), aNum: aNum, bNum: bNum };
 
-        var timeVarying = false;
-        try { timeVarying = param.isTimeVarying(); } catch (e) {}
-        if (!timeVarying) { report.reason = "no keyframes"; return report; }
-
-        var keys;
-        try { keys = param.getKeys(); } catch (e) { keys = null; }
-        if (!keys || keys.length < 2) { report.reason = "needs 2+ keyframes"; return report; }
-
-        var seg = pickSegment(keys, seq, item);
-        if (!seg) { report.reason = "no segment"; return report; }
-
-        var aRaw = seg.a.raw, bRaw = seg.b.raw;
-        var aNum = seg.a.n, bNum = seg.b.n;
-        var fmt = keyFormat(aRaw);
-        if (aNum === null || bNum === null || isNaN(aNum) || isNaN(bNum) || bNum <= aNum) {
-            report.reason = "unreadable key times [" + fmt + "]"; return report;
-        }
+        if (isNaN(aNum) || isNaN(bNum) || bNum <= aNum) { out.reason = "unreadable key times"; return out; }
 
         // endpoint values (use RAW keys so reads always hit the right keyframe)
         var vStart, vEnd;
-        try { vStart = param.getValueAtKey(aRaw); } catch (e) { report.reason = "read start failed"; return report; }
-        try { vEnd = param.getValueAtKey(bRaw); } catch (e) { report.reason = "read end failed"; return report; }
+        try { vStart = param.getValueAtKey(aRaw); } catch (e) { out.reason = "read start failed"; return out; }
+        try { vEnd = param.getValueAtKey(bRaw); } catch (e) { out.reason = "read end failed"; return out; }
 
-        // Remove ONLY previously-baked interior keys (strictly between endpoints).
-        // Endpoints are never touched, so keyframes can't be lost.
-        for (var k = 0; k < seg.list.length; k++) {
-            var kn = seg.list[k].n;
-            if (kn > aNum + 1e-6 && kn < bNum - 1e-6) {
-                try { param.removeKey(seg.list[k].raw); } catch (e3) {}
+        // Clear the interior. Re-read so we see the CURRENT keys (a prior bake in
+        // this same Apply may have changed them). Endpoints are excluded.
+        var live = sortedKeys(param);
+        for (var k = 0; k < live.length; k++) {
+            if (live[k].n > aNum + 1e-6 && live[k].n < bNum - 1e-6) {
+                try { param.removeKey(live[k].raw); } catch (e3) {}
             }
         }
 
         // Add interior curve points between the endpoints (skip t=0 and t=1).
-        var count = 0;
         for (var c = 0; c < curve.length; c++) {
             var pt = curve[c];
             if (pt.t <= 1e-4 || pt.t >= 1 - 1e-4) continue;
@@ -471,22 +585,48 @@ var FrameFlow = (function () {
             if (time === null) continue;
             var value = lerp(vStart, vEnd, pt.v);
             try { param.addKey(time); } catch (eAdd) {}
-            try { param.setValueAtKey(time, value, NO_UI); count++; } catch (eSet) {}
+            try { param.setValueAtKey(time, value, NO_UI); out.count++; } catch (eSet) {}
         }
 
         // re-assert endpoint values (they are never removed)
         try { param.setValueAtKey(aRaw, vStart, NO_UI); } catch (e4) {}
         try { param.setValueAtKey(bRaw, vEnd, DO_UI); } catch (e5) {}
 
-        // Now set smooth bezier interpolation on the REAL key times (frame-snapped),
-        // auto-detecting the constant this Premiere accepts.
-        report.probe = applyBezierToSegment(param, aNum, bNum);
+        // Smooth bezier on the REAL key times (frame-snapped), auto-detecting the
+        // interpolation constant this Premiere accepts.
+        out.probe = applyBezierToSegment(param, aNum, bNum);
+        out.ok = true; // endpoints preserved regardless
+        return out;
+    }
 
-        report.applied = true; // endpoints preserved regardless
-        report.reason = count + " interp keys [" + fmt + "]" +
-            (seg.multi ? " (seg " + (seg.idx + 1) + "/" + (seg.list.length - 1) + " @ playhead)" : "");
-        report.keys = count;
-        report.fmt = fmt;
+    function bakeParam(param, curve, seq, item, pkey, segMode) {
+        var report = { applied: false, reason: "" };
+
+        var timeVarying = false;
+        try { timeVarying = param.isTimeVarying(); } catch (e) {}
+        if (!timeVarying) { report.reason = "no keyframes"; return report; }
+
+        var res = resolveSegments(param, pkey, seq, item, segMode);
+        if (!res) { report.reason = "needs 2+ keyframes"; return report; }
+
+        var total = 0, done = 0, labels = [];
+        for (var s = 0; s < res.indices.length; s++) {
+            var idx = res.indices[s];
+            var out = bakeSegment(param, curve, res.anchors[idx], res.anchors[idx + 1]);
+            if (!out.ok) { if (!report.reason) report.reason = out.reason; continue; }
+            registerBaked(param, pkey, out.aNum, out.bNum);
+            total += out.count;
+            done++;
+            labels.push(String(idx + 1));
+            if (!report.fmt) report.fmt = out.fmt;
+            if (!report.probe) report.probe = out.probe;
+        }
+        if (!done) { if (!report.reason) report.reason = "no segment"; return report; }
+
+        report.applied = true;
+        report.keys = total;
+        report.reason = total + " interp keys [" + report.fmt + "]" +
+            (res.total > 1 ? " (seg " + labels.join(",") + "/" + res.total + ")" : "");
         return report;
     }
 
@@ -500,7 +640,7 @@ var FrameFlow = (function () {
     //   start -> Ease In      (only the first keyframe bezier; end stays snappy)
     //   end   -> Ease Out     (only the last keyframe bezier; start stays snappy)
     //   none  -> Linear
-    function easeParamNative(param, opts, seq, item) {
+    function easeParamNative(param, opts, seq, item, pkey, segMode) {
         var report = { applied: false, reason: "" };
         var easeStart = opts && opts.easeStart;
         var easeEnd = opts && opts.easeEnd;
@@ -509,25 +649,26 @@ var FrameFlow = (function () {
         try { timeVarying = param.isTimeVarying(); } catch (e) {}
         if (!timeVarying) { report.reason = "no keyframes"; return report; }
 
-        var keys;
-        try { keys = param.getKeys(); } catch (e) { keys = null; }
-        if (!keys || keys.length < 2) { report.reason = "needs 2+ keyframes"; return report; }
-
-        var seg = pickSegment(keys, seq, item);
-        if (!seg) { report.reason = "no segment"; return report; }
+        var res = resolveSegments(param, pkey, seq, item, segMode);
+        if (!res) { report.reason = "needs 2+ keyframes"; return report; }
 
         // Set interpolation on just this segment's two keyframes. Pass the RAW
         // key value straight back to Premiere (no seconds conversion) so it lands
         // on the right keyframe regardless of the time domain getKeys() uses.
         var typeStart = easeStart ? BEZIER_INTERP : KF.LINEAR;
         var typeEnd = easeEnd ? BEZIER_INTERP : KF.LINEAR;
-        var n = 0;
-        try { param.setInterpolationTypeAtKey(seg.a.raw, typeStart, NO_UI); n++; } catch (e) {}
-        try { param.setInterpolationTypeAtKey(seg.b.raw, typeEnd, DO_UI); n++; } catch (e) {}
+        var n = 0, labels = [];
+        for (var s = 0; s < res.indices.length; s++) {
+            var idx = res.indices[s];
+            var lastWrite = (s === res.indices.length - 1);
+            try { param.setInterpolationTypeAtKey(res.anchors[idx].raw, typeStart, NO_UI); n++; } catch (e) {}
+            try { param.setInterpolationTypeAtKey(res.anchors[idx + 1].raw, typeEnd, lastWrite ? DO_UI : NO_UI); n++; } catch (e2) {}
+            labels.push(String(idx + 1));
+        }
 
         report.applied = n > 0;
         report.reason = report.applied
-            ? ("eased " + n + " keyframes" + (seg.multi ? " (segment @ playhead)" : ""))
+            ? ("eased " + n + " keyframes" + (res.total > 1 ? " (seg " + labels.join(",") + "/" + res.total + ")" : ""))
             : "set interpolation failed";
         report.keys = n;
         return report;
@@ -622,6 +763,9 @@ var FrameFlow = (function () {
             var anyKeyed = !!payload.anyKeyed;   // also ease any keyframed effect param
             var applied = 0, skipped = 0;
 
+            // which keyframe pair(s) to write: playhead | last | first | all
+            var segMode = payload.segment || "playhead";
+
             // native ease shape; default to Ease In-Out if the panel sent nothing
             var easeOpts = {
                 easeStart: payload.easeStart === undefined ? true : !!payload.easeStart,
@@ -633,12 +777,14 @@ var FrameFlow = (function () {
             var snapshotSet = [];   // undo entry for this Apply
             for (var i = 0; i < items.length; i++) {
                 var props = collectProps(items[i], wanted, anyKeyed);
+                var ik = itemKey(items[i]);
                 for (var p = 0; p < props.length; p++) {
+                    var pkey = ik + "|" + props[p].key;
                     // snapshot BEFORE modifying so Restore can put it back
-                    snapshotSet.push(snapshotParam(props[p].param, props[p].comp + " › " + props[p].name));
+                    snapshotSet.push(snapshotParam(props[p].param, props[p].comp + " › " + props[p].name, pkey));
                     var rep = (method === "bake")
-                        ? bakeParam(props[p].param, curve, seq, items[i])
-                        : easeParamNative(props[p].param, easeOpts, seq, items[i]);
+                        ? bakeParam(props[p].param, curve, seq, items[i], pkey, segMode)
+                        : easeParamNative(props[p].param, easeOpts, seq, items[i], pkey, segMode);
                     if (!diag && rep.fmt) diag = rep.fmt;
                     if (!probe && rep.probe) probe = rep.probe;
                     result.details.push(props[p].comp + " › " + props[p].name + ": " + rep.reason);
