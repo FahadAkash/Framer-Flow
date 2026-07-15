@@ -384,7 +384,9 @@ var FrameFlow = (function () {
                 var id = targetIdForName(name);
                 var include = false;
                 if (id && wantSet[id]) include = true;
-                if (!include && anyKeyed && paramKeyCount(param) >= 2) include = true;
+                // anyKeyed should only pick up UNKNOWN (custom/3rd-party) params,
+                // never re-include a known target the user explicitly unchecked.
+                if (!include && anyKeyed && !id && paramKeyCount(param) >= 2) include = true;
                 if (include) {
                     var key = ci + ":" + pi;
                     var dup = false;
