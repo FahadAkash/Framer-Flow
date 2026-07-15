@@ -17,6 +17,7 @@
         presetScroll: document.getElementById("presetScroll"),
         savePresetBtn: document.getElementById("savePresetBtn"),
         applyBtn: document.getElementById("applyBtn"),
+        applyBtnMain: document.getElementById("applyBtnMain"),
         undoBtn: document.getElementById("undoBtn"),
         densWrap: document.getElementById("densWrap"),
         densInput: document.getElementById("densInput"),
@@ -231,8 +232,7 @@
         els.densInput.value = clampDens(parseInt(els.densInput.value, 10) || 12);
     });
 
-    // ---- apply --------------------------------------------------------------
-    els.applyBtn.addEventListener("click", function () {
+    function performApply() {
         var props = selectedProps();
         if (!props.length && !els.anyKeyed.checked) { toast("Pick a property, or tick keyframed effect props", "err"); return; }
         if (!hostReady) { toast("Not running inside Premiere Pro", "err"); return; }
@@ -252,14 +252,29 @@
             curve: Bezier.sampleCurveAdaptive(editor.cp, { tol: 0.006, maxPoints: density, minPoints: 3 })
         };
         var payloadStr = JSON.stringify(payload);
+        
         els.applyBtn.disabled = true;
         els.applyBtn.textContent = "Applying…";
+        if (els.applyBtnMain) {
+            els.applyBtnMain.disabled = true;
+            els.applyBtnMain.textContent = "Applying…";
+        }
+
         cs.evalScript("FrameFlow.apply(" + JSON.stringify(payloadStr) + ")", function (res) {
             els.applyBtn.disabled = false;
             els.applyBtn.textContent = "Apply to selection";
+            if (els.applyBtnMain) {
+                els.applyBtnMain.disabled = false;
+                els.applyBtnMain.textContent = "Apply Ease";
+            }
             handleHostResult(res);
         });
-    });
+    }
+
+    els.applyBtn.addEventListener("click", performApply);
+    if (els.applyBtnMain) {
+        els.applyBtnMain.addEventListener("click", performApply);
+    }
 
     function handleHostResult(res) {
         var r;

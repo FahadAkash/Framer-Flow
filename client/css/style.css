@@ -160,6 +160,38 @@ h2 { font-size: 13px; font-weight: 600; }
     margin-top: 10px; font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
     font-size: 12px; color: var(--muted); text-align: center; letter-spacing: .3px;
 }
+.editor-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+.apply-btn-main {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 28px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: var(--font);
+    box-shadow: 0 4px 12px rgba(232, 145, 45, 0.3);
+    transition: background 0.15s, transform 0.1s, opacity 0.15s;
+    width: 100%;
+    max-width: 240px;
+    text-align: center;
+}
+.apply-btn-main:hover:not(:disabled) {
+    filter: brightness(1.18);
+}
+.apply-btn-main:active:not(:disabled) {
+    transform: translateY(1px);
+}
+.apply-btn-main:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
 
 /* Traffic light dots (decorative, matches reference) */
 .traffic-dots {
