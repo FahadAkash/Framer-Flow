@@ -366,8 +366,9 @@ var FrameFlow = (function () {
     //              covers third-party effect parameters with arbitrary names.
     //   seq, item, segMode = segment context so anyKeyed custom params can be
     //              filtered to only those whose keyframes span the playhead.
+    //   customWanted = array of custom param names explicitly requested by the user.
     // Deduped by component:param identity so nothing is processed twice.
-    function collectProps(item, wanted, anyKeyed, seq, segMode) {
+    function collectProps(item, wanted, anyKeyed, seq, segMode, customWanted) {
         var found = []; // { id, param, name, comp }
         var comps = item.components;
         if (!comps) return found;
@@ -391,16 +392,26 @@ var FrameFlow = (function () {
                 // Additionally, when segMode is 'playhead', only include custom
                 // params whose keyframes actually span the playhead position.
                 if (!include && anyKeyed && !id && paramKeyCount(param) >= 2) {
-                    if (segMode === "playhead" && seq) {
-                        // Check if the playhead is between this param's keyframes
-                        var pkey = ci + ":" + pi;
-                        var anch = anchorsOf(param, pkey);
-                        if (anch.length >= 2) {
-                            var ph = playheadInKeyDomain(anch, seq, item);
-                            include = (ph && ph.inRange);
+                    // Check if this custom parameter name is explicitly requested
+                    var isRequested = true;
+                    if (customWanted && customWanted.length > 0) {
+                        isRequested = false;
+                        for (var c = 0; c < customWanted.length; c++) {
+                            if (customWanted[c] === name) { isRequested = true; break; }
                         }
-                    } else {
-                        include = true;
+                    }
+                    if (isRequested) {
+                        if (segMode === "playhead" && seq) {
+                            // Check if the playhead is between this param's keyframes
+                            var pkey = ci + ":" + pi;
+                            var anch = anchorsOf(param, pkey);
+                            if (anch.length >= 2) {
+                                var ph = playheadInKeyDomain(anch, seq, item);
+                                include = (ph && ph.inRange);
+                            }
+                        } else {
+                            include = true;
+                        }
                     }
                 }
                 if (include) {
@@ -790,11 +801,13 @@ var FrameFlow = (function () {
                 easeEnd: payload.easeEnd === undefined ? true : !!payload.easeEnd
             };
 
+            var customWanted = payload.customWanted || [];
+
             var diag = "";
             var probe = "";
             var snapshotSet = [];   // undo entry for this Apply
             for (var i = 0; i < items.length; i++) {
-                var props = collectProps(items[i], wanted, anyKeyed, seq, segMode);
+                var props = collectProps(items[i], wanted, anyKeyed, seq, segMode, customWanted);
                 var ik = itemKey(items[i]);
                 for (var p = 0; p < props.length; p++) {
                     var pkey = ik + "|" + props[p].key;

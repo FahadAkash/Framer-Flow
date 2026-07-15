@@ -126,8 +126,19 @@ h2 { font-size: 13px; font-weight: 600; }
 .anykeyed { margin-top: 12px; }
 .anykeyed span { font-size: 12px; color: var(--text); }
 .anykeyed em { font-style: normal; color: var(--muted); font-size: 11px; }
-.effects-line { margin-top: 6px; color: var(--accent); font-size: 11px; }
-.effects-line:empty { display: none; }
+
+/* Dynamic custom property checkboxes */
+.custom-prop-grid { 
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; margin-left: 28px;
+}
+.custom-prop-grid:empty { display: none; }
+.custom-prop-chip {
+    display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+    background: var(--panel-2); border: 1px solid var(--stroke-2); border-radius: 6px;
+    cursor: pointer; font-size: 11px; color: var(--text); transition: all 0.2s;
+}
+.custom-prop-chip:hover { border-color: var(--stroke); }
+.custom-prop-chip input[type="checkbox"] { margin: 0; }
 
 /* Segmented control */
 .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--stroke-2); border-radius: 8px; padding: 3px; }

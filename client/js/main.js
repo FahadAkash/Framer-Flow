@@ -25,7 +25,7 @@
         densPlus: document.getElementById("densPlus"),
         modeCaption: document.getElementById("modeCaption"),
         anyKeyed: document.getElementById("anyKeyed"),
-        effectsLine: document.getElementById("effectsLine"),
+        customPropsList: document.getElementById("customPropsList"),
         replayBtn: document.getElementById("replayBtn"),
         toast: document.getElementById("toast")
     };
@@ -231,6 +231,10 @@
         els.densInput.value = clampDens(parseInt(els.densInput.value, 10) || 12);
     });
 
+    els.anyKeyed.addEventListener("change", function() {
+        pollSelection();
+    });
+
     function performApply() {
         var props = selectedProps();
         if (!props.length && !els.anyKeyed.checked) { toast("Pick a property, or tick keyframed effect props", "err"); return; }
@@ -243,6 +247,8 @@
             method: "bake",               // always bake — the reliable path in Premiere
             props: props,
             anyKeyed: !!els.anyKeyed.checked,   // also ease keyframed effect params
+            // If anyKeyed is checked, specify exactly which custom params to target
+            customWanted: els.anyKeyed.checked ? Array.prototype.slice.call(els.customPropsList.querySelectorAll('input:checked')).map(function(c) { return c.dataset.customProp; }) : [],
             // which of YOUR keyframe pairs to bake between (baked keys don't count)
             segment: els.segMode ? els.segMode.value : "playhead",
             samples: density,
@@ -315,7 +321,7 @@
 
             if (!r.clips) {
                 els.selectionHint.textContent = "Select a clip with 2+ keyframes, then Apply.";
-                els.effectsLine.textContent = "";
+                els.customPropsList.innerHTML = "";
                 clearDots("");
                 return;
             }
@@ -331,15 +337,47 @@
                 setDot(prop, s.keyed ? "keyed" : (s.present ? "none" : "absent"));
             });
 
-            // list effects/components that hold keyframes (Transform, 3rd-party)
+            // list custom effects/components that hold keyframes (Transform, 3rd-party)
             var eff = r.effects || [];
-            if (eff.length) {
-                var parts = eff.map(function (e) {
-                    return e.name + " (" + e.params.map(function (x) { return x.name; }).join(", ") + ")";
+            if (eff.length && els.anyKeyed.checked) {
+                els.customPropsList.style.display = "flex";
+                // Keep track of what should exist
+                var expected = {};
+                eff.forEach(function (e) {
+                    e.params.forEach(function (x) {
+                        expected[x.name] = { comp: e.name, name: x.name };
+                    });
                 });
-                els.effectsLine.textContent = "Keyframed: " + parts.join("  ·  ");
+                
+                // Remove stale ones
+                Array.from(els.customPropsList.children).forEach(function(lbl) {
+                    var chk = lbl.querySelector("input");
+                    if (chk && !expected[chk.dataset.customProp]) {
+                        lbl.remove();
+                    }
+                });
+
+                // Add missing ones
+                Object.keys(expected).forEach(function(key) {
+                    var ex = els.customPropsList.querySelector('input[data-custom-prop="' + key + '"]');
+                    if (!ex) {
+                        var lbl = document.createElement("label");
+                        lbl.className = "custom-prop-chip";
+                        lbl.title = "Include " + key + " (" + expected[key].comp + ") in the ease";
+                        var chk = document.createElement("input");
+                        chk.type = "checkbox";
+                        chk.checked = true;
+                        chk.dataset.customProp = key;
+                        var spn = document.createElement("span");
+                        spn.textContent = key;
+                        lbl.appendChild(chk);
+                        lbl.appendChild(spn);
+                        els.customPropsList.appendChild(lbl);
+                    }
+                });
             } else {
-                els.effectsLine.textContent = "";
+                els.customPropsList.style.display = "none";
+                els.customPropsList.innerHTML = "";
             }
         });
     }
