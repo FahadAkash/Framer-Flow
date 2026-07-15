@@ -22,7 +22,7 @@
 var FrameFlow = (function () {
     "use strict";
 
-    var VERSION = "1.1.0";
+    var VERSION = "1.2";
 
     // Undo history: each Apply pushes a set of per-property snapshots taken
     // BEFORE it modified anything. restoreLast() pops and rewrites them. The
