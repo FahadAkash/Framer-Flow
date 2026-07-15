@@ -364,8 +364,10 @@ var FrameFlow = (function () {
     //              "Position"/"Scale"/etc. are found just like the Motion ones.
     //   anyKeyed = also include ANY param that currently has 2+ keyframes, which
     //              covers third-party effect parameters with arbitrary names.
+    //   seq, item, segMode = segment context so anyKeyed custom params can be
+    //              filtered to only those whose keyframes span the playhead.
     // Deduped by component:param identity so nothing is processed twice.
-    function collectProps(item, wanted, anyKeyed) {
+    function collectProps(item, wanted, anyKeyed, seq, segMode) {
         var found = []; // { id, param, name, comp }
         var comps = item.components;
         if (!comps) return found;
@@ -386,7 +388,21 @@ var FrameFlow = (function () {
                 if (id && wantSet[id]) include = true;
                 // anyKeyed should only pick up UNKNOWN (custom/3rd-party) params,
                 // never re-include a known target the user explicitly unchecked.
-                if (!include && anyKeyed && !id && paramKeyCount(param) >= 2) include = true;
+                // Additionally, when segMode is 'playhead', only include custom
+                // params whose keyframes actually span the playhead position.
+                if (!include && anyKeyed && !id && paramKeyCount(param) >= 2) {
+                    if (segMode === "playhead" && seq) {
+                        // Check if the playhead is between this param's keyframes
+                        var pkey = ci + ":" + pi;
+                        var anch = anchorsOf(param, pkey);
+                        if (anch.length >= 2) {
+                            var ph = playheadInKeyDomain(anch, seq, item);
+                            include = (ph && ph.inRange);
+                        }
+                    } else {
+                        include = true;
+                    }
+                }
                 if (include) {
                     var key = ci + ":" + pi;
                     var dup = false;
@@ -778,7 +794,7 @@ var FrameFlow = (function () {
             var probe = "";
             var snapshotSet = [];   // undo entry for this Apply
             for (var i = 0; i < items.length; i++) {
-                var props = collectProps(items[i], wanted, anyKeyed);
+                var props = collectProps(items[i], wanted, anyKeyed, seq, segMode);
                 var ik = itemKey(items[i]);
                 for (var p = 0; p < props.length; p++) {
                     var pkey = ik + "|" + props[p].key;
