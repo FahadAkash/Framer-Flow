@@ -16,8 +16,7 @@
         selectionHint: document.getElementById("selectionHint"),
         presetScroll: document.getElementById("presetScroll"),
         savePresetBtn: document.getElementById("savePresetBtn"),
-        applyBtn: document.getElementById("applyBtn"),
-        applyBtnMain: document.getElementById("applyBtnMain"),
+        applyBtn: document.getElementById("applyBtnMain"),
         undoBtn: document.getElementById("undoBtn"),
         densWrap: document.getElementById("densWrap"),
         densInput: document.getElementById("densInput"),
@@ -255,26 +254,15 @@
         
         els.applyBtn.disabled = true;
         els.applyBtn.textContent = "Applying…";
-        if (els.applyBtnMain) {
-            els.applyBtnMain.disabled = true;
-            els.applyBtnMain.textContent = "Applying…";
-        }
 
         cs.evalScript("FrameFlow.apply(" + JSON.stringify(payloadStr) + ")", function (res) {
             els.applyBtn.disabled = false;
-            els.applyBtn.textContent = "Apply to selection";
-            if (els.applyBtnMain) {
-                els.applyBtnMain.disabled = false;
-                els.applyBtnMain.textContent = "Apply Ease";
-            }
+            els.applyBtn.textContent = "Apply Ease";
             handleHostResult(res);
         });
     }
 
     els.applyBtn.addEventListener("click", performApply);
-    if (els.applyBtnMain) {
-        els.applyBtnMain.addEventListener("click", performApply);
-    }
 
     function handleHostResult(res) {
         var r;

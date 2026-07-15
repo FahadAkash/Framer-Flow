@@ -163,6 +163,8 @@ h2 { font-size: 13px; font-weight: 600; }
 .editor-actions {
     display: flex;
     justify-content: center;
+    align-items: center;
+    gap: 8px;
     margin-top: 12px;
 }
 .apply-btn-main {
@@ -332,24 +334,15 @@ h2 { font-size: 13px; font-weight: 600; }
     border-radius: 5px; padding: 1px 6px; margin-left: 2px;
 }
 .ease-type.linear { color: var(--muted); background: transparent; border: 1px solid var(--stroke-2); }
-.apply-btn {
-    background: var(--accent); color: #fff; border: none; border-radius: 9px;
-    padding: 11px 20px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font);
-    box-shadow: 0 6px 18px rgba(232,145,45,.35); white-space: nowrap; flex: 1 1 auto;
-}
-.undo-btn { white-space: nowrap; flex: 0 0 auto; }
-.apply-actions { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; }
 .undo-btn {
+    white-space: nowrap;
     background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-2);
-    border-radius: 9px; padding: 10px 14px; font-size: 12px; font-weight: 600;
+    border-radius: 8px; padding: 11px 18px; font-size: 13px; font-weight: 600;
     cursor: pointer; font-family: var(--font); transition: border-color .15s, color .15s;
 }
 .undo-btn:hover:not(:disabled) { border-color: var(--accent); color: #fff; }
 .undo-btn:active:not(:disabled) { transform: translateY(1px); }
 .undo-btn:disabled { opacity: .4; cursor: not-allowed; }
-.apply-btn:hover { filter: brightness(1.08); }
-.apply-btn:active { transform: translateY(1px); }
-.apply-btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 
 /* Toast — slides down from the top, always fully visible, above everything */
 .toast {

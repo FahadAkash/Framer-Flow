@@ -70,6 +70,7 @@
                     </div>
                     <div class="readout" id="readout" title="The ease as a CSS-style cubic-bezier — the four handle coordinates">cubic-bezier(0.42, 0.00, 0.58, 1.00)</div>
                     <div class="editor-actions">
+                        <button class="undo-btn" id="undoBtn" title="Restore properties to how they were before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
                         <button class="apply-btn-main" id="applyBtnMain" title="Apply the ease onto the selected clip's properties">Apply Ease</button>
                     </div>
                 </div>
@@ -100,10 +101,6 @@
                     <option value="all">Every pair</option>
                 </select>
                 <span class="mode-caption" id="modeCaption"></span>
-            </div>
-            <div class="apply-actions">
-                <button class="undo-btn" id="undoBtn" title="Restore properties to how they were before the last Apply (Ctrl+Z)" disabled>↺ Undo</button>
-                <button class="apply-btn" id="applyBtn" title="Bake the ease onto the selected clip's ticked properties, between the keyframe pair chosen on the left">Apply to selection</button>
             </div>
         </footer>
 
