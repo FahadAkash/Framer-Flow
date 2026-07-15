@@ -39,10 +39,9 @@ var FrameFlow = (function () {
     // Lives in the persistent ExtendScript engine, so it survives panel calls.
     var bakedReg = {};
 
-    // Premiere keyframe interpolation constants (setInterpolationTypeAtKey).
-    // Types shown in the keyframe right-click menu: Linear, Bezier, Auto Bezier,
-    // Continuous Bezier, Hold.
-    var KF = { LINEAR: 0, HOLD: 1, BEZIER: 2, TIME: 3 };
+    // kfInterpMode enum values in modern Premiere: Linear=0, Hold=4, Bezier=5 (or 4 for Continuous Bezier)
+    // We use 5 (Auto Bezier/Bezier) as the primary target for smooth keyframes.
+    var KF = { LINEAR: 0, HOLD: 1, BEZIER: 5, TIME: 3 };
 
     // Interpolation applied to every baked keyframe so the motion is smooth and
     // consistent (instead of faceted Linear). If motion ever FREEZES between
@@ -473,9 +472,8 @@ var FrameFlow = (function () {
     }
 
     // Set bezier interpolation on every real keyframe in [aNum,bNum]. Re-reads
-    // getKeys() so we target the ACTUAL (frame-snapped) key times. Premiere's
-    // kfInterpMode enum is Linear=0, Hold=1, Bezier=2, Time=3 — so BAKE_INTERP=2.
-    // If a read-back API exists we confirm it stuck (and fall back to 3 if not).
+    // getKeys() so we target the ACTUAL (frame-snapped) key times. 
+    // Premiere's kfInterpMode uses 5 for Bezier/Auto Bezier and 4 for Continuous.
     function applyBezierToSegment(param, aNum, bNum) {
         if (typeof param.setInterpolationTypeAtKey !== "function") return "noSetFn";
         var keys;
@@ -490,11 +488,11 @@ var FrameFlow = (function () {
         if (!inRange.length) return "0keys";
 
         var hasGet = (typeof param.getInterpolationTypeAtKey === "function");
-        var target = BAKE_INTERP; // 2 = Bezier
+        var target = BAKE_INTERP; // 5 = Bezier
 
         if (hasGet) {
-            // confirm 2 sticks; if a version numbers it differently, try 3 then 4
-            var order = [2, 3, 4];
+            // try 5 (Auto Bezier), then 4 (Continuous Bezier), then fallback to 2
+            var order = [5, 4, 2];
             for (var c = 0; c < order.length; c++) {
                 try { param.setInterpolationTypeAtKey(inRange[0], order[c], true); } catch (e2) { continue; }
                 var got = null; try { got = param.getInterpolationTypeAtKey(inRange[0]); } catch (e3) {}
