@@ -841,6 +841,7 @@ var FrameFlow = (function () {
         } catch (err) {
             result.message = "Error: " + err.toString();
         }
+        result.canUndo = undoStack.length;
         return JSON.stringify(result);
     }
 
