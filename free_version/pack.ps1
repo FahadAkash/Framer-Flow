@@ -78,8 +78,8 @@ $targets = @(
         Rules = @(
             # <span class="ver" title="Version 1.0">v1.0</span>
             @{ Find = '(<span class="ver" title="Version )[^"]*(">v)[^<]*(</span>)'; Replace = "`${1}$display`${2}$display`${3}" },
-            # <div class="credit">FrameFlow v1.0 — crafted by ...
-            @{ Find = '(FrameFlow v)[\d.]+';                                          Replace = "`${1}$display" }
+            # <div class="credit">FrameFlow Free v1.0 — crafted by ...
+            @{ Find = '(FrameFlow Free v)[\d.]+';                                          Replace = "`${1}$display" }
         )
     }
 )
